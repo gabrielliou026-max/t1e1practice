@@ -1,0 +1,1156 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LAB-A PRI 介接 CLI 練習器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#D5DACD; --panel:#EDEFE6; --ink:#1E2923; --muted:#55625A; --line:#B5BDAE;
+  --olive:#4C5A2E; --olive-ink:#F2F4EA; --amber:#B9860F;
+  --term:#17201C; --term-bar:#222C27; --term-ink:#D5DBCA; --term-dim:#8A968C;
+  --prompt:#E3B23C; --err:#E8907A; --ok:#97C487; --dbg:#9DB9CC;
+  --led-on:#7FCB68; --led-bad:#E0634A; --led-warn:#E3B23C; --led-dim:#3B4640;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --sans:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#111714; --panel:#1B231F; --ink:#DCE3D4; --muted:#96A298; --line:#2D3832;
+    --olive:#8A9C55; --olive-ink:#10140E; --amber:#E3B23C;
+    --term:#0C110F; --term-bar:#151C18;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111714; --panel:#1B231F; --ink:#DCE3D4; --muted:#96A298; --line:#2D3832;
+  --olive:#8A9C55; --olive-ink:#10140E; --amber:#E3B23C;
+  --term:#0C110F; --term-bar:#151C18;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6}
+.wrap{max-width:1320px;margin:0 auto;padding:18px 16px 28px}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;margin-bottom:14px}
+.top h1{font-family:var(--mono);font-weight:600;font-size:1.35rem;letter-spacing:.01em;margin:0}
+.top p{margin:0;color:var(--muted);font-size:.92rem}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:16px;align-items:start}
+@media (max-width:920px){.grid{grid-template-columns:1fr}}
+
+/* console */
+.console{background:var(--term);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;height:min(76vh,760px);min-height:420px;border:1px solid #000}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:9px 14px;background:var(--term-bar);border-bottom:1px solid #000;font-family:var(--mono);font-size:12.5px;color:var(--term-dim)}
+.bar .item{display:inline-flex;align-items:center;gap:7px}
+.led{width:10px;height:10px;border-radius:50%;background:var(--led-dim);box-shadow:inset 0 0 0 1px rgba(0,0,0,.4)}
+.led.on{background:var(--led-on);box-shadow:0 0 8px var(--led-on)}
+.led.bad{background:var(--led-bad);box-shadow:0 0 8px var(--led-bad)}
+.led.warn{background:var(--led-warn);box-shadow:0 0 8px var(--led-warn)}
+.bar .pend{color:var(--prompt)}
+.bar .spacer{flex:1}
+.screen{flex:1;overflow:auto;padding:12px 14px 16px;font-family:var(--mono);font-size:13.5px;line-height:1.5;color:var(--term-ink);cursor:text;overflow-wrap:anywhere}
+.screen.flash{animation:fl .18s}
+@keyframes fl{from{background:#2a1f1b}to{background:transparent}}
+#out div{white-space:pre-wrap;min-height:1.5em}
+#out .dim{color:var(--term-dim)}
+#out .err{color:var(--err)}
+#out .dbg{color:var(--dbg)}
+#out .log{color:var(--term-dim)}
+.inline{display:flex;align-items:baseline}
+#prompt{white-space:pre;color:var(--prompt)}
+#cmd{flex:1;min-width:40px;background:transparent;border:0;outline:0;color:var(--term-ink);font:inherit;padding:0;caret-color:var(--prompt)}
+.keys{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:#000;border-top:1px solid #000}
+.keys button{font-family:var(--mono);font-size:13px;padding:11px 4px;background:var(--term-bar);color:var(--term-ink);border:0;cursor:pointer}
+.keys button:active{background:#33403a}
+.keys button:focus-visible{outline:2px solid var(--prompt);outline-offset:-2px}
+
+/* side */
+.side{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.tabs{display:flex;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;font:inherit;font-size:.92rem;padding:11px 6px;border:0;background:transparent;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent}
+.tabs button[aria-selected="true"]{color:var(--ink);font-weight:700;border-bottom-color:var(--olive)}
+.tabs button:focus-visible{outline:2px solid var(--olive);outline-offset:-2px}
+.pane{padding:14px 16px 18px}
+.pane h2{font-size:1rem;margin:0 0 4px}
+.pane h3{font-size:.95rem;margin:18px 0 6px}
+.pane .note{color:var(--muted);font-size:.85rem;margin:6px 0 0}
+.progress{display:flex;align-items:center;gap:10px;margin:2px 0 12px;font-size:.88rem;color:var(--muted)}
+.meter{flex:1;height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--olive);width:0;transition:width .3s}
+ol.tasks{list-style:none;margin:0;padding:0;counter-reset:t}
+ol.tasks li{counter-increment:t;display:grid;grid-template-columns:26px 1fr;gap:4px 8px;padding:9px 0;border-top:1px solid var(--line)}
+ol.tasks li:first-child{border-top:0}
+ol.tasks .box{width:22px;height:22px;border:1.5px solid var(--muted);border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:var(--muted)}
+ol.tasks .box::before{content:counter(t)}
+ol.tasks li.done .box{background:var(--olive);border-color:var(--olive);color:var(--olive-ink)}
+ol.tasks li.done .box::before{content:"✓";font-size:13px}
+ol.tasks li.done .tt{color:var(--muted)}
+ol.tasks details{grid-column:2;font-size:.85rem;color:var(--muted)}
+ol.tasks summary{cursor:pointer;width:max-content}
+ol.tasks code,.pane code{font-family:var(--mono);font-size:.82rem;background:rgba(127,140,120,.16);padding:1px 4px;border-radius:3px}
+label.f{display:block;font-size:.88rem;color:var(--muted);margin:8px 0 3px}
+select,input.t{width:100%;font:inherit;font-size:.92rem;padding:7px 9px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink)}
+input.t{font-family:var(--mono)}
+.row{display:flex;gap:8px}
+.row>*{flex:1}
+.btn{font:inherit;font-size:.92rem;font-weight:500;padding:8px 14px;border-radius:5px;border:1px solid var(--olive);background:var(--olive);color:var(--olive-ink);cursor:pointer;margin-top:10px}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn:focus-visible,select:focus-visible,input.t:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chips button{font-family:var(--mono);font-size:.78rem;padding:3px 8px;border:1px solid var(--line);border-radius:4px;background:transparent;color:var(--ink);cursor:pointer}
+.trace{margin-top:14px}
+.trace .tt{font-weight:700;margin:0 0 6px}
+.trace .tt.good{color:var(--olive)}
+.trace .tt.bad{color:#B0472F}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .trace .tt.bad{color:var(--err)}}
+.trace ol{list-style:none;margin:0;padding:0}
+.trace li{font-size:.86rem;padding:5px 0 5px 10px;border-left:3px solid var(--line);margin-bottom:4px}
+.trace li.v{border-left-color:var(--olive)}
+.trace li.x{border-left-color:#C2553B}
+.trace li.w{border-left-color:var(--amber)}
+.did{font-family:var(--mono);font-size:.85rem;margin:4px 0 0;padding:0;list-style:none}
+.did li{padding:2px 0}
+.hiddenval{font-size:.88rem;padding:7px 9px;border:1px dashed var(--line);border-radius:5px;color:var(--muted)}
+@media (max-width:600px){
+  .console{height:62vh;min-height:360px}
+  .screen{font-size:12.5px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>LAB-RTR-A</h1>
+    <p>中華電信 PRI 介接的 CLI 練習器。照右側任務把設定改好，Tab 補齊、? 查選項。</p>
+  </header>
+
+  <main class="grid">
+    <section class="console" aria-label="路由器終端機">
+      <div class="bar">
+        <span class="item"><span class="led" id="ledL1"></span><span id="lblL1">E1 0/1/0</span></span>
+        <span class="item"><span class="led" id="ledL2"></span><span>ISDN L2</span></span>
+        <span class="item"><span class="led" id="ledSave"></span><span id="lblSave">已存檔</span></span>
+        <span class="spacer"></span>
+        <span class="pend" id="pend"></span>
+      </div>
+      <div class="screen" id="screen">
+        <div id="out"></div>
+        <div class="inline"><span id="prompt"></span><input id="cmd" aria-label="指令輸入" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+      </div>
+      <div class="keys" aria-label="快捷鍵">
+        <button data-k="tab">Tab</button>
+        <button data-k="?">?</button>
+        <button data-k="up">↑</button>
+        <button data-k="down">↓</button>
+        <button data-k="z">Ctrl+Z</button>
+        <button data-k="enter">Enter</button>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="tasks">任務</button>
+        <button role="tab" aria-selected="false" data-tab="call">模擬通話</button>
+        <button role="tab" aria-selected="false" data-tab="carrier">電信端</button>
+      </div>
+
+      <div class="pane" id="tab-tasks">
+        <div class="progress"><div class="meter"><i id="meter"></i></div><span id="prog">0/10</span></div>
+        <ol class="tasks" id="tasks"></ol>
+      </div>
+
+      <div class="pane" id="tab-call" hidden>
+        <h2>外線打進來</h2>
+        <label class="f" for="inDid">外面撥的號碼</label>
+        <select id="inDid"></select>
+        <button class="btn" id="btnIn">撥入</button>
+
+        <h3>內線打出去</h3>
+        <div class="row">
+          <div><label class="f" for="outExt">發話內線</label><input class="t" id="outExt" value="654321"></div>
+          <div><label class="f" for="outNum">撥打號碼</label><input class="t" id="outNum" value="0912345678"></div>
+        </div>
+        <div class="chips">
+          <button data-n="0912345678">手機</button>
+          <button data-n="077654321">本區 07</button>
+          <button data-n="0223456789">台北 02</button>
+          <button data-n="22223333">22223333</button>
+        </div>
+        <button class="btn" id="btnOut">撥出</button>
+
+        <div class="trace" id="trace" aria-live="polite"></div>
+        <p class="note">在終端機開啟 <code>debug isdn q931</code> 或 <code>debug voice translation</code> 後，模擬通話時也會印出 debug 訊息。</p>
+      </div>
+
+      <div class="pane" id="tab-carrier" hidden>
+        <h2>中華電信端參數</h2>
+        <p class="note">路由器要設定得跟這裡一致，線路才會起來。</p>
+        <label class="f" for="cLine">線路類型</label>
+        <select id="cLine"><option value="e1">E1 30B+D</option><option value="t1">T1 23B+D</option></select>
+        <div id="cVisible">
+          <label class="f" for="cFrame">E1 framing</label>
+          <select id="cFrame"><option value="crc4">crc4</option><option value="no-crc4">no-crc4</option></select>
+          <label class="f" for="cDigits">被叫號碼送法</label>
+          <select id="cDigits"><option value="7">7 碼（不含區碼）</option><option value="9">9 碼（含區碼 07）</option><option value="4">末 4 碼</option></select>
+        </div>
+        <div id="cHidden" hidden>
+          <label class="f">E1 framing 與送碼方式</label>
+          <div class="hiddenval">已隱藏，請用 show 與 debug 指令判斷。</div>
+          <button class="btn ghost" id="btnReveal">顯示答案</button>
+        </div>
+        <label class="f" for="cSw">switch-type</label>
+        <select id="cSw"><option value="primary-net5">primary-net5</option><option value="primary-ni">primary-ni</option></select>
+        <p class="note">T1 固定為 framing esf、linecode b8zs。</p>
+
+        <h3>DID 號碼對照</h3>
+        <ul class="did" id="didList"></ul>
+        <label class="f" for="cExt">XRI-400 上存在的內線</label>
+        <input class="t" id="cExt" value="654321, 654322, 654323, 654324, 654325, 360500">
+
+        <div class="row">
+          <button class="btn" id="btnRandom">隨機出題</button>
+          <button class="btn ghost" id="btnReset">重設練習</button>
+        </div>
+        <p class="note">這是簡化的模擬：告警、debug 輸出與電信端反應都是為了練習而設計，不代表設備或中華電信的實際行為。</p>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s);
+const out=$('#out'), inp=$('#cmd'), promptEl=$('#prompt'), screen=$('#screen');
+const clone=o=>JSON.parse(JSON.stringify(o));
+
+const DIDS=['6612001','6612002','6612003','6612004','6612005'];
+const TARGETS=['654321','654322','654323','654324','654325'];
+const XRI_IP='10.10.6.124';
+const SW=['primary-4ess','primary-5ess','primary-dms100','primary-net5','primary-ni','primary-ntt','primary-qsig'];
+const SWH={'primary-4ess':'Lucent 4ESS switch type for the U.S.','primary-5ess':'Lucent 5ESS switch type for the U.S.','primary-dms100':'Northern Telecom DMS-100 switch type for the U.S.','primary-net5':'NET5 switch type for UK, Europe, Asia and Australia','primary-ni':'National ISDN Switch type for the U.S.','primary-ntt':'NTT switch type for Japan','primary-qsig':'QSIG switch type'};
+
+/* ---------- state ---------- */
+function defCtl(t){ return t==='e1'?{framing:'crc4',linecode:'hdb3',clock:null,pri:null,desc:'',cable:null}:{framing:'sf',linecode:'ami',clock:null,pri:null,desc:'',cable:null}; }
+function initialConfig(){
+  const e1={}; ['0/1/0','0/1/1','0/1/2','0/1/3'].forEach(n=>e1[n]=defCtl('e1'));
+  Object.assign(e1['0/1/0'],{framing:'no-crc4',clock:'line primary',pri:'1-31',desc:'hinet-E1-PRI'});
+  const vp={'0/1/0:15':{incoming:'PRI'}}; for(let i=0;i<6;i++) vp['1/0/'+i]={};
+  return {
+    hostname:'LAB-RTR-A', cardType:'e1', globalSwitch:'primary-net5',
+    controllers:{e1, t1:{}},
+    serials:{'0/1/0:15':{sw:'primary-ni',incoming:true,noip:true,ip:null,encap:'hdlc',desc:'',shut:false}},
+    rules:{'10':{'1':{m:'/^09\\(........\\)/',r:'/09\\1/',tail:'type unknown unknown'}},'50':{'1':{m:'/^806\\(...\\)/',r:'/360\\1/'}}},
+    profiles:{PRI:{called:'50'},PRO:{called:'10'}},
+    voicePorts:vp,
+    dialPeers:[
+      {tag:'100',type:'voip',desc:'XRI-400 Trunk LAB-A',dest:'.T',proto:'sipv2',target:'ipv4:'+XRI_IP,transport:'udp',extra:[' dtmf-relay rtp-nte',' codec g711ulaw',' no vad']},
+      {tag:'1',type:'pots',desc:'POTS1',dest:'360291',port:'1/0/0'},
+      {tag:'2',type:'pots',desc:'POTS2',dest:'360292',port:'1/0/1'},
+      {tag:'518',type:'pots',dest:'53661[6-7]',fwd:'all'},
+      {tag:'20',type:'pots',dest:'22223333',port:'0/1/0:15',fwd:'all'},
+      {tag:'21',type:'pots',dest:'034000...',port:'0/1/0:15',fwd:'all'},
+      {tag:'22',type:'pots',profOut:'PRO',dest:'09........',port:'0/1/0:15',fwd:'all'}
+    ]
+  };
+}
+let S, C;
+function freshState(){
+  const cfg=initialConfig();
+  S={cfg, startup:clone(cfg), hw:'e1', dirty:false, mode:'exec', ctx:null, debug:{q931:false,trans:false}, history:[], hidx:0, pending:null, flags:{conf:false,test:false,saved:false}};
+}
+function freshCarrier(){ C={line:'e1', e1framing:'crc4', t1framing:'esf', t1linecode:'b8zs', sw:'primary-net5', digits:'7', hidden:false}; }
+freshState(); freshCarrier();
+const mark=()=>{S.dirty=true;};
+const dchan=()=>'0/1/0:'+(S.hw==='e1'?'15':'23');
+
+/* ---------- output ---------- */
+function print(text,cls){
+  String(text).split('\n').forEach(l=>{
+    const d=document.createElement('div');
+    let c=cls; if(!c && /^% /.test(l)) c='err';
+    if(c) d.className=c; d.textContent=l; out.appendChild(d);
+  });
+  while(out.childNodes.length>2500) out.removeChild(out.firstChild);
+}
+function scrollDown(){ screen.scrollTop=screen.scrollHeight; }
+function flash(){ screen.classList.remove('flash'); void screen.offsetWidth; screen.classList.add('flash'); }
+function ts(){
+  const d=new Date(), M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+  const p=(n,l=2)=>String(n).padStart(l,'0');
+  return `*${M} ${String(d.getDate()).padStart(2,' ')} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(),3)}:`;
+}
+
+/* ---------- grammar helpers ---------- */
+const K=(k,h,c,run,o)=>Object.assign({t:'k',k,h,c:c||[],run},o||{});
+const NUM=(min,max,h,c,run,o)=>Object.assign({t:'p',type:'num',min,max,label:`<${min}-${max}>`,h,c:c||[],run},o||{});
+const WORD=(label,h,c,run,v,o)=>Object.assign({t:'p',type:'word',label,h,c:c||[],run,v},o||{});
+const LINE=(h,run)=>({t:'p',type:'line',label:'LINE',h,c:[],run});
+const kids=n=>typeof n.c==='function'?n.c():(n.c||[]);
+const isIp=t=>/^\d{1,3}(\.\d{1,3}){3}$/.test(t);
+const isPat=t=>/^\/.*\/$/.test(t)&&t.length>=2;
+const isDial=t=>/^[0-9.\[\]\-T*#+%?,]+$/i.test(t);
+const sortK=l=>l.sort((a,b)=>(a.k||a.label).localeCompare(b.k||b.label));
+
+function accepts(p,tok){
+  if(p.type==='num') return /^\d+$/.test(tok)&&+tok>=p.min&&+tok<=p.max;
+  if(p.type==='line') return true;
+  return p.v?p.v(tok):true;
+}
+function matchTok(children,tok){
+  const low=tok.toLowerCase();
+  const kws=children.filter(n=>n.t==='k'&&n.k.toLowerCase().startsWith(low));
+  const ex=kws.find(n=>n.k.toLowerCase()===low);
+  if(ex) return {node:ex};
+  const ps=children.filter(n=>n.t==='p'&&accepts(n,tok));
+  if(kws.length===1) return {node:kws[0]};
+  if(kws.length>1) return {amb:true};
+  if(ps.length) return {node:ps[0]};
+  return {bad:true};
+}
+function walk(tokens,roots){
+  let children=roots,node=null; const vals=[];
+  for(let i=0;i<tokens.length;i++){
+    const m=matchTok(children,tokens[i]);
+    if(m.amb) return {err:'amb',i};
+    if(m.bad) return {err:'bad',i};
+    node=m.node;
+    if(node.t==='p'&&node.type==='line'){ vals.push(tokens.slice(i).join(' ')); return {node,vals,done:true}; }
+    vals.push(node.t==='k'?node.k:tokens[i]);
+    children=kids(node);
+  }
+  return {node,vals};
+}
+const fix=s=>s.replace(/(^|\s)(se[a-z]*)(\d)/ig,'$1$2 $3');
+
+/* ---------- mode trees ---------- */
+function commonCfg(){ return [
+  K('do','To run exec commands in config mode',()=>privRoots()),
+  K('end','Exit from configure mode',null,()=>toPriv()),
+  K('exit','Exit from current mode',null,()=>exitMode())
+];}
+function withCommon(list){
+  return sortK(list.concat(commonCfg(),[K('no','Negate a command or set its defaults',()=>list)]));
+}
+function modeRoots(m){
+  return ({exec:execRoots,priv:privRoots,config:configRoots,ctl:ctlRoots,if:ifRoots,rule:ruleRoots,prof:profRoots,vp:vpRoots,dp:dpRoots})[m]();
+}
+const isSub=m=>['ctl','if','rule','prof','vp','dp'].includes(m);
+function promptStr(){
+  if(S.pending) return S.pending.prompt;
+  return S.cfg.hostname+({exec:'>',priv:'#',config:'(config)#',ctl:'(config-controller)#',if:'(config-if)#',rule:'(cfg-translation-rule)#',prof:'(cfg-translation-profile)#',vp:'(config-voiceport)#',dp:'(config-dial-peer)#'})[S.mode];
+}
+
+function showRoots(priv){
+  const units=()=>['0/1/0','0/1/1','0/1/2','0/1/3'];
+  const l=[
+    K('controllers','Interface controller status',()=>[K(S.hw,S.hw.toUpperCase()+' controller internal state',[WORD('<0-0>/<1-1>/<0-3>','Controller unit number',null,showCtl,t=>units().includes(t),{sug:units})],showCtl)]),
+    K('dial-peer','Dial Plan Mapping Table for, e.g. VoIP Peers',[K('voice','Voice type dial peers',[K('summary','Dial-peer summary information',null,showDP)])]),
+    K('isdn','ISDN information',[K('status','ISDN Line Status',null,showIsdn)]),
+    K('voice','Voice port configuration & stats',[K('translation-rule','Voice translation rule table',[NUM(1,2147483647,'Translation rule tag',null,showRule,{sug:()=>Object.keys(S.cfg.rules)})],showRule)])
+  ];
+  if(priv) l.push(
+    K('debugging','State of each debugging option',null,showDebug),
+    K('running-config','Current operating configuration',null,()=>cfgText(S.cfg,S.hw,true)),
+    K('startup-config','Contents of startup configuration',null,()=>cfgText(S.startup,S.startup.cardType||S.hw,false))
+  );
+  return sortK(l);
+}
+function execRoots(){ return [
+  K('enable','Turn on privileged commands',null,()=>{S.mode='priv';}),
+  K('exit','Exit from the EXEC',null,logout),
+  K('show','Show running system information',()=>showRoots(false))
+];}
+function privRoots(){
+  const undebug=()=>{S.debug={q931:false,trans:false}; return 'All possible debugging has been turned off';};
+  return sortK([
+    K('configure','Enter configuration mode',[K('terminal','Configure from the terminal',null,enterConfig)],enterConfig),
+    K('copy','Copy from one file to another',[K('running-config','Copy from current system configuration',[K('startup-config','Copy to startup configuration',null,copyRun)])]),
+    K('debug','Debugging functions',[
+      K('isdn','ISDN debug commands',[K('q931','ISDN Q931 packets',null,()=>{S.debug.q931=true; return 'debug isdn q931 is              ON.';})]),
+      K('voice','Voice debugging',[K('translation','Voice translation rule debugging',null,()=>{S.debug.trans=true; return 'Voice translation rule debugging is on';})])
+    ]),
+    K('disable','Turn off privileged commands',null,()=>{S.mode='exec';}),
+    K('exit','Exit from the EXEC',null,logout),
+    K('no','Negate a command or set its defaults',[K('debug','Disable debugging functions',[K('all','Enable all debugging',null,undebug)])]),
+    K('reload','Halt and perform a cold restart',null,reloadCmd),
+    K('show','Show running system information',()=>showRoots(true)),
+    K('test','Test subsystems, memory, and interfaces',[K('voice','Voice test commands',[K('translation-rule','Test voice translation rule',[NUM(1,2147483647,'Translation rule tag',[WORD('WORD','Input number to be translated',null,testRule,t=>/^[0-9*#+]+$/.test(t))],null,{sug:()=>Object.keys(S.cfg.rules)})])])]),
+    K('undebug','Disable debugging functions (see also \'debug\')',[K('all','Enable all debugging',null,undebug)]),
+    K('write','Write running configuration to memory, network, or terminal',[K('memory','Write to NV memory',null,save)],save)
+  ]);
+}
+function configRoots(){
+  const card=t=>K(t,t.toUpperCase()+' card type',[NUM(0,1,'Card slot number',[NUM(0,1,'Card bay number',null,setCard)])]);
+  const units=()=>['0/1/0','0/1/1','0/1/2','0/1/3'];
+  return withCommon([
+    K('card','Configure card type',[K('type','Configure card type',[card('e1'),card('t1')])]),
+    K('controller','Configure a specific controller',()=>[K(S.hw,S.hw.toUpperCase()+' controller',[WORD('<0-0>/<1-1>/<0-3>','Controller unit number',null,v=>enterCtl(v[2]),t=>units().includes(t),{sug:units})])]),
+    K('dial-peer','Dial Map (Peer) configuration commands',[K('voice','Voice type dial peers',[NUM(1,1073741823,'Voice dial-peer tag',[
+        K('pots','Telephony',null,(v,x)=>enterDP(v[2],'pots',x)),
+        K('voip','Voice over IP',null,(v,x)=>enterDP(v[2],'voip',x))
+      ],(v,x)=>enterDP(v[2],null,x),{nOnly:true,sug:()=>S.cfg.dialPeers.map(d=>d.tag)})])]),
+    K('hostname','Set system\'s network name',[WORD('WORD','This system\'s network name',null,(v,x)=>{ if(x.neg) return; S.cfg.hostname=v[1]; mark(); })]),
+    K('interface','Select an interface to configure',[K('Serial','Serial',[WORD('<0-1>/<0-1>/<0-3>:<0-23>','Serial interface number',null,(v,x)=>enterIf(v[2],x),t=>!!S.cfg.serials[t],{sug:()=>Object.keys(S.cfg.serials)})])]),
+    K('isdn','ISDN configuration commands',[K('switch-type','Select the ISDN switch type',SW.map(s=>K(s,SWH[s],null,(v,x)=>{S.cfg.globalSwitch=x.neg?null:s; mark();})),(v,x)=>{S.cfg.globalSwitch=null; mark();},{nOnly:true})]),
+    K('voice','Global voice configuration',[
+      K('translation-profile','Translation profile',[WORD('WORD','Translation profile name',null,(v,x)=>enterProf(v[2],x),null,{sug:()=>Object.keys(S.cfg.profiles)})]),
+      K('translation-rule','Translation rule',[NUM(1,2147483647,'Translation rule tag',null,(v,x)=>enterRule(v[2],x),{sug:()=>Object.keys(S.cfg.rules)})])
+    ]),
+    K('voice-port','Switch to a voice port',[WORD('<slot/subunit/port>','Voice port',null,(v,x)=>enterVP(v[1],x),t=>!!S.cfg.voicePorts[t],{sug:()=>Object.keys(S.cfg.voicePorts)})])
+  ]);
+}
+function ctlRoots(){
+  const t=S.ctx.type, c=()=>S.cfg.controllers[t][S.ctx.name], d=defCtl(t);
+  const set=(k,val)=>(v,x)=>{c()[k]=x.neg?d[k]:val; mark();};
+  const fr=t==='e1'?[K('crc4','Use CRC4 Framing',null,set('framing','crc4')),K('no-crc4','Use No CRC4 Framing',null,set('framing','no-crc4'))]
+                   :[K('esf','Extended Superframe Framing',null,set('framing','esf')),K('sf','Superframe Framing',null,set('framing','sf'))];
+  const lc=t==='e1'?[K('ami','AMI encoding',null,set('linecode','ami')),K('hdb3','HDB3 encoding',null,set('linecode','hdb3'))]
+                   :[K('ami','AMI encoding',null,set('linecode','ami')),K('b8zs','B8ZS encoding',null,set('linecode','b8zs'))];
+  const clk=val=>(v,x)=>{c().clock=x.neg?null:val; mark();};
+  const max=t==='e1'?31:24;
+  const l=[
+    K('clock','Specify the clock source for a DS1 link',[K('source','Specify the clock source for a DS1 link',[
+      K('internal','Internal Clock Source',null,clk('internal')),
+      K('line','Recover Clock from Line',[K('primary','Primary Line Clock Source',null,clk('line primary')),K('secondary','Secondary Line Clock Source',null,clk('line secondary'))],clk('line'))
+    ],clk(null),{nOnly:true})]),
+    K('description','Controller specific description',[LINE('Up to 80 characters describing this controller',(v,x)=>{c().desc=x.neg?'':v[1]; mark();})],(v,x)=>{c().desc=''; mark();},{nOnly:true}),
+    K('framing','Specify the type of Framing on a '+t.toUpperCase()+' link',fr,(v,x)=>{c().framing=d.framing; mark();},{nOnly:true}),
+    K('linecode','Specify the line encoding method for a '+t.toUpperCase()+' link',lc,(v,x)=>{c().linecode=d.linecode; mark();},{nOnly:true}),
+    K('pri-group','Configure the specified timeslots for PRI',[K('timeslots','List of timeslots in the pri-group',[WORD(`<1-${max}>`,'List of timeslots, e.g. 1-'+max,null,setPri,tk=>/^\d+(-\d+)?(,\d+(-\d+)?)*$/.test(tk),{sug:()=>['1-'+max]})],removePri,{nOnly:true})],removePri,{nOnly:true})
+  ];
+  if(t==='t1'){
+    const cab=val=>(v,x)=>{c().cable=x.neg?null:val; mark();};
+    l.push(K('cablelength','Specify the cable length for a DS1 link',[
+      K('long','long cable length in decibels',['0db','-7.5db','-15db','-22.5db'].map(n=>K(n,n+' transmit attenuation',null,cab('long '+n)))),
+      K('short','short cable length in feet',['110','220','330','440','550','660'].map(n=>K(n,n+' feet',null,cab('short '+n))))
+    ],cab(null),{nOnly:true}));
+  }
+  return withCommon(l);
+}
+function ifRoots(){
+  const s=()=>S.cfg.serials[S.ctx.name];
+  const enc=e=>(v,x)=>{s().encap=x.neg?'hdlc':e; mark();};
+  return withCommon([
+    K('description','Interface specific description',[LINE('Up to 240 characters describing this interface',(v,x)=>{s().desc=x.neg?'':v[1]; mark();})],(v,x)=>{s().desc=''; mark();},{nOnly:true}),
+    K('encapsulation','Set encapsulation type for an interface',[K('hdlc','Serial HDLC synchronous',null,enc('hdlc')),K('ppp','Point-to-Point protocol',null,enc('ppp'))]),
+    K('ip','Interface Internet Protocol config commands',[K('address','Set the IP address of an interface',[WORD('A.B.C.D','IP address',[WORD('A.B.C.D','IP subnet mask',null,(v,x)=>{ if(x.neg){s().noip=true;s().ip=null;} else {s().noip=false;s().ip=v[2]+' '+v[3];} mark(); },isIp)],null,isIp)],(v,x)=>{s().noip=true; s().ip=null; mark();},{nOnly:true})]),
+    K('isdn','ISDN Interface configuration commands',[
+      K('incoming-voice','Specify options for incoming calls.',[
+        K('data','Incoming voice calls will be handled as data.',null,(v,x)=>{s().incoming=false; mark();}),
+        K('voice','Incoming voice calls will be handled as voice.',null,(v,x)=>{s().incoming=!x.neg; mark();})
+      ],(v,x)=>{s().incoming=false; mark();},{nOnly:true}),
+      K('switch-type','Select the Interface ISDN switch type',SW.map(w=>K(w,SWH[w],null,(v,x)=>{s().sw=x.neg?null:w; mark();})),(v,x)=>{s().sw=null; mark();},{nOnly:true})
+    ]),
+    K('shutdown','Shutdown the selected interface',null,(v,x)=>{s().shut=!x.neg; mark();})
+  ]);
+}
+function ruleRoots(){
+  const set=()=>S.cfg.rules[S.ctx.id];
+  const put=(v,x,tail)=>{
+    if(x.neg){ delete set()[v[1]]; mark(); return; }
+    try{ ciscoRe(v[2]); }catch(e){ return '% Invalid regular expression in match pattern'; }
+    set()[v[1]]={m:v[2],r:v[3]}; if(tail) set()[v[1]].tail=tail; mark();
+  };
+  return withCommon([
+    K('rule','Specify a translation rule',[NUM(1,15,'Translation rule sequence number',[
+      WORD('WORD','Matching pattern, e.g. /^806\\(...\\)/',[
+        WORD('WORD','Replacement pattern, e.g. /360\\1/',[K('type','Match and replace number type',[LINE('Match type and replace type, e.g. unknown unknown',(v,x)=>put(v,x,'type '+v[5]))])],(v,x)=>put(v,x),isPat)
+      ],null,isPat)
+    ],(v,x)=>{ delete set()[v[1]]; mark(); },{nOnly:true,sug:()=>Object.keys(set()||{})})])
+  ]);
+}
+function profRoots(){
+  const p=()=>S.cfg.profiles[S.ctx.name];
+  const tr=k=>(v,x)=>{ if(x.neg) delete p()[k]; else p()[k]=v[2]; mark(); };
+  const n=k=>K(k,'Translate the '+k+' number',[NUM(1,2147483647,'Translation rule tag',null,tr(k),{sug:()=>Object.keys(S.cfg.rules)})],tr(k),{nOnly:true});
+  return withCommon([K('translate','Translate a number',[n('called'),n('calling')])]);
+}
+function vpRoots(){
+  const vp=()=>S.cfg.voicePorts[S.ctx.name];
+  const sp=k=>(v,x)=>{ if(x.neg) delete vp()[k]; else vp()[k]=v[2]; mark(); };
+  const dir=k=>K(k,'Translation profile for '+k+' call',[WORD('WORD','Translation profile name',null,sp(k),null,{sug:()=>Object.keys(S.cfg.profiles)})],sp(k),{nOnly:true});
+  return withCommon([
+    K('description','Description of what this port is connected to',[LINE('Character string up to 255 characters',(v,x)=>{vp().desc=x.neg?'':v[1]; mark();})],(v,x)=>{vp().desc=''; mark();},{nOnly:true}),
+    K('translation-profile','Translation profile',[dir('incoming'),dir('outgoing')])
+  ]);
+}
+function dpRoots(){
+  const dp=()=>S.cfg.dialPeers.find(d=>d.tag===S.ctx.tag);
+  const del=k=>(v,x)=>{ delete dp()[k]; mark(); };
+  const prof=k=>(v,x)=>{ if(x.neg) delete dp()[k]; else dp()[k]=v[2]; mark(); };
+  const l=[
+    K('description','A string describing this dial-peer',[LINE('Up to 64 characters',(v,x)=>{ if(x.neg) delete dp().desc; else dp().desc=v[1]; mark(); })],del('desc'),{nOnly:true}),
+    K('destination-pattern','A full E.164 telephone number prefix',[WORD('WORD','A dial-peer destination pattern, e.g. 07[2-9]......',null,(v,x)=>{ if(x.neg) delete dp().dest; else dp().dest=v[1]; mark(); },isDial)],del('dest'),{nOnly:true}),
+    K('incoming','The number to match on incoming calls',[K('called-number','Called number to match on incoming calls',[WORD('WORD','A called number pattern',null,(v,x)=>{ if(x.neg) delete dp().incoming; else dp().incoming=v[2]; mark(); },isDial)],del('incoming'),{nOnly:true})]),
+    K('translation-profile','Translation profile',[
+      K('incoming','Translation profile for incoming call',[WORD('WORD','Translation profile name',null,prof('profIn'),null,{sug:()=>Object.keys(S.cfg.profiles)})],del('profIn'),{nOnly:true}),
+      K('outgoing','Translation profile for outgoing call',[WORD('WORD','Translation profile name',null,prof('profOut'),null,{sug:()=>Object.keys(S.cfg.profiles)})],del('profOut'),{nOnly:true})
+    ])
+  ];
+  if(dp().type==='pots'){
+    l.push(
+      K('forward-digits','Number of digits to be forwarded',[K('all','Forward all digits',null,(v,x)=>{ if(x.neg) delete dp().fwd; else dp().fwd='all'; mark(); }),NUM(0,32,'Number of digits to forward',null,(v,x)=>{ if(x.neg) delete dp().fwd; else dp().fwd=v[1]; mark(); })],del('fwd'),{nOnly:true}),
+      K('port','Voice port',[WORD('<slot/subunit/port>','Voice port',null,(v,x)=>{ if(x.neg) delete dp().port; else dp().port=v[1]; mark(); },t=>!!S.cfg.voicePorts[t],{sug:()=>Object.keys(S.cfg.voicePorts)})],del('port'),{nOnly:true})
+    );
+  } else {
+    l.push(K('session','Specify session parameters',[
+      K('protocol','The session protocol to be used',[K('sipv2','IETF Session Initiation Protocol',null,(v,x)=>{ if(x.neg) delete dp().proto; else dp().proto='sipv2'; mark(); })],del('proto'),{nOnly:true}),
+      K('target','Specify session target',[WORD('WORD','ipv4:A.B.C.D',null,(v,x)=>{ if(x.neg) delete dp().target; else dp().target=v[2]; mark(); },t=>/^ipv4:\d{1,3}(\.\d{1,3}){3}$/.test(t))],del('target'),{nOnly:true}),
+      K('transport','Set the session transport',[K('tcp','TCP transport',null,(v,x)=>{dp().transport='tcp'; mark();}),K('udp','UDP transport',null,(v,x)=>{dp().transport='udp'; mark();})])
+    ]));
+  }
+  return withCommon(l);
+}
+function pipeRoots(){ return [
+  K('begin','Begin with the line that matches',[LINE('Regular Expression',null)]),
+  K('include','Include lines that match',[LINE('Regular Expression',null)]),
+  K('section','Filter a section of output',[LINE('Regular Expression',null)])
+];}
+
+/* ---------- mode actions ---------- */
+function enterConfig(){ S.mode='config'; S.ctx=null; S.flags.conf=true; return 'Enter configuration commands, one per line.  End with CNTL/Z.'; }
+function toPriv(){ S.mode='priv'; S.ctx=null; return ts()+' %SYS-5-CONFIG_I: Configured from console by console'; }
+function exitMode(){ if(S.mode==='config') return toPriv(); S.mode='config'; S.ctx=null; }
+function logout(){ S.mode='exec'; S.ctx=null; return `\n${S.cfg.hostname} con0 is now available\n\nPress RETURN to get started.`; }
+function enterCtl(name){ S.mode='ctl'; S.ctx={type:S.hw,name}; }
+function enterIf(name,x){ if(x.neg) return '% Removal of channelized serial interfaces is not supported; use "no pri-group" on the controller'; S.mode='if'; S.ctx={name}; }
+function enterRule(id,x){ if(x.neg){ delete S.cfg.rules[id]; mark(); return; } if(!S.cfg.rules[id]){ S.cfg.rules[id]={}; mark(); } S.mode='rule'; S.ctx={id}; }
+function enterProf(name,x){ if(x.neg){ delete S.cfg.profiles[name]; mark(); return; } if(!S.cfg.profiles[name]){ S.cfg.profiles[name]={}; mark(); } S.mode='prof'; S.ctx={name}; }
+function enterVP(name,x){ if(x.neg) return '% Voice ports cannot be removed'; S.mode='vp'; S.ctx={name}; }
+function enterDP(tag,type,x){
+  const ex=S.cfg.dialPeers.find(d=>d.tag===tag);
+  if(x.neg){ if(!ex) return `% Dial-peer ${tag} does not exist`; S.cfg.dialPeers=S.cfg.dialPeers.filter(d=>d.tag!==tag); mark(); return; }
+  if(ex&&ex.type!==type) return `% Dial-peer ${tag} already exists as type ${ex.type}`;
+  if(!ex){ S.cfg.dialPeers.push({tag,type}); mark(); }
+  S.mode='dp'; S.ctx={tag};
+}
+function setCard(v,x){
+  const t=v[2], slot=v[3], bay=v[4];
+  if(slot!=='0'||bay!=='1') return `% No module present in slot ${slot}/${bay}`;
+  if(x.neg){ if(S.cfg.cardType!==t) return `% Card type ${t.toUpperCase()} is not configured on 0/1`; S.cfg.cardType=null; mark(); return; }
+  if(S.cfg.cardType===t) return;
+  if(S.cfg.cardType) return `% Card type is already ${S.cfg.cardType.toUpperCase()}. Remove it first: no card type ${S.cfg.cardType} 0 1`;
+  S.cfg.cardType=t; mark();
+  if(t!==S.hw) return `% The new card type takes effect after the configuration is saved and the router is reloaded.\n（模擬器提示：write memory 之後 reload，controller 才會變成 ${t.toUpperCase()}）`;
+}
+function setPri(v,x){
+  const t=S.ctx.type, ctl=S.ctx.name, max=t==='e1'?31:24;
+  if(x.neg) return removePri();
+  const nums=v[2].split(/[-,]/).map(Number);
+  if(nums.some(n=>n<1||n>max)) return `% Timeslots must be within 1-${max}`;
+  const c=S.cfg.controllers[t][ctl]; c.pri=v[2];
+  const dn=ctl+':'+(t==='e1'?'15':'23');
+  if(!S.cfg.serials[dn]) S.cfg.serials[dn]={sw:S.cfg.globalSwitch,incoming:false,noip:true,ip:null,encap:'hdlc',desc:'',shut:false};
+  if(!S.cfg.voicePorts[dn]) S.cfg.voicePorts[dn]={};
+  mark();
+}
+function removePri(){
+  const t=S.ctx.type, ctl=S.ctx.name, c=S.cfg.controllers[t][ctl];
+  if(!c.pri) return; c.pri=null;
+  const dn=ctl+':'+(t==='e1'?'15':'23');
+  delete S.cfg.serials[dn]; delete S.cfg.voicePorts[dn]; mark();
+}
+function doSave(){ S.startup=clone(S.cfg); S.dirty=false; S.flags.saved=true; }
+function save(){ doSave(); return 'Building configuration...\n[OK]'; }
+function copyRun(){
+  S.pending={prompt:'Destination filename [startup-config]? ',handler:a=>{
+    const t=a.trim(); if(t===''||t==='startup-config'){ doSave(); print('Building configuration...\n[OK]'); }
+    else print('% The simulator only supports startup-config');
+  }};
+}
+function reloadCmd(){
+  const proceed=()=>{ S.pending={prompt:'Proceed with reload? [confirm]',handler:a=>{ const t=a.trim(); if(t===''||/^y/i.test(t)) doReload(); }}; };
+  const ask=()=>{ S.pending={prompt:'System configuration has been modified. Save? [yes/no]: ',handler:a=>{
+    const t=a.trim().toLowerCase();
+    if(t.startsWith('y')){ doSave(); print('Building configuration...\n[OK]'); proceed(); }
+    else if(t.startsWith('n')) proceed();
+    else { print("% Please answer 'yes' or 'no'."); ask(); }
+  }}; };
+  if(S.dirty) ask(); else proceed();
+}
+function doReload(){
+  print('\nReload Requested by console. Reload Reason: Reload Command.\n\nInitializing Hardware ...\nLoading bootflash:c8000be-universalk9 ... done\n','dim');
+  S.cfg=clone(S.startup);
+  const nhw=S.cfg.cardType||S.hw; let changed=false;
+  if(nhw!==S.hw){
+    const from=S.hw;
+    S.cfg.controllers[from]={}; S.cfg.controllers[nhw]={};
+    ['0/1/0','0/1/1','0/1/2','0/1/3'].forEach(n=>S.cfg.controllers[nhw][n]=defCtl(nhw));
+    Object.keys(S.cfg.serials).forEach(k=>{ if(k.startsWith('0/1/')) delete S.cfg.serials[k]; });
+    Object.keys(S.cfg.voicePorts).forEach(k=>{ if(k.includes(':')) delete S.cfg.voicePorts[k]; });
+    S.cfg.dialPeers.forEach(d=>{ if(d.port&&d.port.includes(':')) delete d.port; });
+    changed=true;
+    print(`（模擬器）介面卡已變成 ${nhw.toUpperCase()}。原本 ${from.toUpperCase()} 的 controller、Serial、voice-port，以及 dial-peer 裡指向這些埠的 port 設定，因為介面不存在已被移除，要重新設定。`,'dim');
+  }
+  S.hw=nhw; S.mode='exec'; S.ctx=null; S.debug={q931:false,trans:false}; S.dirty=changed;
+  print('\nPress RETURN to get started!\n','dim');
+}
+
+/* ---------- regex / matching ---------- */
+function ciscoRe(m){
+  const s=m.replace(/^\//,'').replace(/\/$/,''); let o='';
+  for(let i=0;i<s.length;i++){
+    const ch=s[i];
+    if(ch==='\\'&&(s[i+1]==='('||s[i+1]===')')){ o+=s[i+1]; i++; }
+    else if(ch==='('||ch===')') o+='\\'+ch;
+    else o+=ch;
+  }
+  return new RegExp(o);
+}
+const ciscoRepl=r=>r.replace(/^\//,'').replace(/\/$/,'').replace(/\\(\d)/g,'$$$1');
+function applyRules(id,num){
+  const set=S.cfg.rules[id]; if(!set) return {err:`translation-rule ${id} 不存在`};
+  const keys=Object.keys(set).map(Number).sort((a,b)=>a-b);
+  for(const k of keys){
+    const r=set[k]; let re; try{ re=ciscoRe(r.m); }catch(e){ continue; }
+    if(re.test(num)) return {rule:k,out:num.replace(re,ciscoRepl(r.r)),m:r.m,r:r.r};
+  }
+  return {rule:null,out:num};
+}
+function patInfo(p){
+  let r='^',score=0;
+  for(let i=0;i<p.length;i++){
+    const ch=p[i];
+    if(/[0-9*#]/.test(ch)){ r+=ch==='*'?'\\*':ch; score+=10; }
+    else if(ch==='.'){ r+='\\d'; score+=1; }
+    else if(ch==='['){ const j=p.indexOf(']',i); if(j<0) return null; r+=p.slice(i,j+1); score+=5; i=j; }
+    else if(ch==='T'||ch==='t'){ r+='\\d*'; }
+    else if(ch==='+'){ r+='+'; }
+    else if(ch===','){ }
+    else return null;
+  }
+  try{ return {re:new RegExp(r+'$'),score}; }catch(e){ return null; }
+}
+const operational=d=>!!d.dest&&(d.type==='voip'?!!d.target:(!!d.port&&!!S.cfg.voicePorts[d.port]));
+function bestPeer(num){
+  let best=null;
+  for(const d of S.cfg.dialPeers){
+    if(!operational(d)) continue;
+    const pi=patInfo(d.dest); if(!pi||!pi.re.test(num)) continue;
+    if(!best||pi.score>best.score) best={d,score:pi.score};
+  }
+  return best&&best.d;
+}
+function forward(d,num){
+  if(d.fwd==='all') return num;
+  if(d.fwd!=null) return num.slice(-Number(d.fwd)||num.length) ;
+  const lit=(d.dest.match(/^\d+/)||[''])[0].length; return num.slice(lit);
+}
+function fwdDesc(d){
+  if(d.fwd==='all') return 'forward-digits all，送完整號碼';
+  if(d.fwd!=null) return `forward-digits ${d.fwd}，只送最後 ${d.fwd} 碼`;
+  const lit=(d.dest.match(/^\d+/)||[''])[0];
+  return lit?`沒有設定 forward-digits，預設去掉明確比對的前置碼 ${lit}`:'沒有設定 forward-digits';
+}
+
+/* ---------- line status ---------- */
+function l1(){
+  const hw=S.hw, c=S.cfg.controllers[hw]&&S.cfg.controllers[hw]['0/1/0'];
+  if(!c) return {up:false,alarm:'Receiver has loss of signal.',why:'controller 不存在'};
+  if(hw!==C.line) return {up:false,alarm:'Receiver has loss of frame.',why:`介面卡是 ${hw.toUpperCase()}，電信端線路是 ${C.line.toUpperCase()}`};
+  const want=hw==='e1'?C.e1framing:C.t1framing;
+  if(c.framing!==want) return {up:false,alarm:hw==='e1'?'Receiver has loss of multiframe.':'Receiver has loss of frame.',why:'framing 與電信端不一致'};
+  const warns=[];
+  if(c.linecode!==(hw==='e1'?'hdb3':C.t1linecode)) warns.push('linecode');
+  if((c.clock||'line').startsWith('internal')) warns.push('clock');
+  return {up:true,warns};
+}
+function isdnState(){
+  const name=dchan(), ser=S.cfg.serials[name];
+  if(!ser) return {exists:false,name,up:false};
+  const sw=ser.sw||S.cfg.globalSwitch, L1=l1();
+  const up=L1.up&&!ser.shut;
+  return {exists:true,name,ser,sw,L1,up,l2:up?'MULTIPLE_FRAME_ESTABLISHED':'TEI_ASSIGNED',swOk:sw===C.sw};
+}
+
+/* ---------- show outputs ---------- */
+function cfgText(cfg,hw,running){
+  const L=['!','! 模擬器只顯示 E1/T1、ISDN 與語音相關設定','!','version 17.12',`hostname ${cfg.hostname}`,'!'];
+  if(cfg.cardType) L.push(`card type ${cfg.cardType} 0 1`,'!');
+  if(cfg.globalSwitch) L.push(`isdn switch-type ${cfg.globalSwitch}`,'!');
+  Object.keys(cfg.rules).sort((a,b)=>a-b).forEach(id=>{
+    L.push(`voice translation-rule ${id}`);
+    Object.keys(cfg.rules[id]).sort((a,b)=>a-b).forEach(n=>{ const r=cfg.rules[id][n]; L.push(` rule ${n} ${r.m} ${r.r}${r.tail?' '+r.tail:''}`); });
+    L.push('!');
+  });
+  Object.keys(cfg.profiles).forEach(p=>{
+    L.push(`voice translation-profile ${p}`);
+    if(cfg.profiles[p].called) L.push(` translate called ${cfg.profiles[p].called}`);
+    if(cfg.profiles[p].calling) L.push(` translate calling ${cfg.profiles[p].calling}`);
+    L.push('!');
+  });
+  const ctls=cfg.controllers[hw]||{}, d=defCtl(hw);
+  Object.keys(ctls).sort().forEach(n=>{
+    const c=ctls[n]; L.push(`controller ${hw.toUpperCase()} ${n}`);
+    if(c.framing!==d.framing) L.push(` framing ${c.framing}`);
+    if(c.clock) L.push(` clock source ${c.clock}`);
+    if(c.linecode!==d.linecode) L.push(` linecode ${c.linecode}`);
+    if(c.cable) L.push(` cablelength ${c.cable}`);
+    if(c.pri) L.push(` pri-group timeslots ${c.pri}`);
+    if(c.desc) L.push(` description ${c.desc}`);
+    L.push('!');
+  });
+  Object.keys(cfg.serials).sort().forEach(n=>{
+    const s=cfg.serials[n]; L.push(`interface Serial${n}`);
+    if(s.desc) L.push(` description ${s.desc}`);
+    L.push(s.noip?' no ip address':` ip address ${s.ip}`);
+    L.push(` encapsulation ${s.encap}`);
+    if(s.shut) L.push(' shutdown');
+    if(s.sw) L.push(` isdn switch-type ${s.sw}`);
+    if(s.incoming) L.push(' isdn incoming-voice voice');
+    L.push('!');
+  });
+  Object.keys(cfg.voicePorts).sort().forEach(n=>{
+    const v=cfg.voicePorts[n]; L.push(`voice-port ${n}`);
+    if(v.incoming) L.push(` translation-profile incoming ${v.incoming}`);
+    if(v.outgoing) L.push(` translation-profile outgoing ${v.outgoing}`);
+    if(v.desc) L.push(` description ${v.desc}`);
+    L.push('!');
+  });
+  cfg.dialPeers.forEach(dp=>{
+    L.push(`dial-peer voice ${dp.tag} ${dp.type}`);
+    if(dp.desc) L.push(` description ${dp.desc}`);
+    if(dp.profIn) L.push(` translation-profile incoming ${dp.profIn}`);
+    if(dp.profOut) L.push(` translation-profile outgoing ${dp.profOut}`);
+    if(dp.dest) L.push(` destination-pattern ${dp.dest}`);
+    if(dp.incoming) L.push(` incoming called-number ${dp.incoming}`);
+    if(dp.type==='voip'){
+      if(dp.proto) L.push(` session protocol ${dp.proto}`);
+      if(dp.target) L.push(` session target ${dp.target}`);
+      if(dp.transport) L.push(` session transport ${dp.transport}`);
+      (dp.extra||[]).forEach(e=>L.push(e));
+    } else {
+      if(dp.port) L.push(` port ${dp.port}`);
+      if(dp.fwd!=null) L.push(` forward-digits ${dp.fwd}`);
+    }
+    L.push('!');
+  });
+  L.push('end');
+  const body=L.join('\n');
+  return running?`Building configuration...\n\nCurrent configuration : ${body.length} bytes\n${body}`:`Using ${body.length} out of 33554432 bytes\n${body}`;
+}
+function showCtl(v){
+  const units=v[3]?[v[3]]:['0/1/0','0/1/1','0/1/2','0/1/3'];
+  return units.map(n=>{
+    const c=S.cfg.controllers[S.hw][n], T=S.hw.toUpperCase();
+    const st=n==='0/1/0'?l1():{up:false,alarm:'Receiver has loss of signal.'};
+    const L=[`${T} ${n} is ${st.up?'up':'down'}.`, `  Applique type is Channelized ${T}${S.hw==='e1'?' - balanced':''}`];
+    if(c.desc) L.push(`  Description: ${c.desc}`);
+    if(st.up) L.push('  No alarms detected.'); else L.push(`  ${st.alarm}`);
+    L.push('  alarm-trigger is not set');
+    if(S.hw==='t1') L.push(`  Cablelength is ${c.cable||'long 0db'}`);
+    const clk=(c.clock||'line').replace(/^line/,'Line').replace(/primary/,'Primary').replace(/secondary/,'Secondary').replace(/^internal/,'Internal');
+    L.push(`  Framing is ${c.framing.toUpperCase()}, Line Code is ${c.linecode.toUpperCase()}, Clock Source is ${clk}.`);
+    const lcv=st.up&&st.warns.includes('linecode')?1532:0, slip=st.up&&st.warns.includes('clock')?87:0, fl=st.up?0:900;
+    L.push('  Data in current interval (900 seconds elapsed):',
+      `     ${lcv} Line Code Violations, ${lcv?212:0} Path Code Violations`,
+      `     ${slip} Slip Secs, ${fl} Fr Loss Secs, 0 Line Err Secs, 0 Degraded Mins`,
+      `     ${lcv?41:0} Errored Secs, 0 Bursty Err Secs, 0 Severely Err Secs, ${fl} Unavail Secs`);
+    if(n==='0/1/0'&&!C.hidden){
+      if(!st.up) L.push(`  （模擬器提示：${st.why}）`);
+      else if(st.warns.includes('linecode')) L.push('  （模擬器提示：linecode 與電信端不一致）');
+      else if(st.warns.includes('clock')) L.push('  （模擬器提示：時脈應該從電信端取，clock source line）');
+    }
+    return L.join('\n');
+  }).join('\n\n');
+}
+function showIsdn(){
+  const iz=isdnState();
+  let s=`Global ISDN Switchtype = ${S.cfg.globalSwitch||'none'}`;
+  if(!iz.exists) return s+'\n%Q.931 is not configured on any interface（模擬器提示：controller 需要 pri-group 才會產生 D 通道）';
+  s+=`\nISDN Serial${iz.name} interface\n        dsl 0, interface ISDN Switchtype = ${iz.sw||'none'}`;
+  s+=`\n    Layer 1 Status:\n        ${iz.L1.up&&!iz.ser.shut?'ACTIVE':'DEACTIVATED'}`;
+  s+=`\n    Layer 2 Status:\n        TEI = 0, Ces = 1, SAPI = 0, State = ${iz.l2}`;
+  s+=`\n    Layer 3 Status:\n        0 Active Layer 3 Call(s)\n    Active dsl 0 CCBs = 0\n    The Free Channel Mask:  ${S.hw==='e1'?'0xFFFF7FFF':'0x807FFFFF'}`;
+  s+='\n    Number of L2 Discards = 0, L2 Session ID = 0\n    Total Allocated ISDN CCBs = 0';
+  return s;
+}
+function showRule(v){
+  const ids=v[2]?[v[2]]:Object.keys(S.cfg.rules).sort((a,b)=>a-b);
+  if(v[2]&&!S.cfg.rules[v[2]]) return `% Translation rule ${v[2]} does not exist`;
+  return ids.map(id=>{
+    const L=[`Translation-rule tag: ${id}`];
+    Object.keys(S.cfg.rules[id]).sort((a,b)=>a-b).forEach(n=>{
+      const r=S.cfg.rules[id][n];
+      L.push(`\tRule ${n}:`,`\tMatch pattern: ${r.m.replace(/^\/|\/$/g,'')}`,`\tReplace pattern: ${r.r.replace(/^\/|\/$/g,'')}`,'\tMatch type: none\t\tReplace type: none','\tMatch plan: none\t\tReplace plan: none');
+    });
+    return L.join('\n');
+  }).join('\n\n');
+}
+function showDP(){
+  const L=['TAG        TYPE  OPER  DEST-PATTERN          FWD   SESS-TARGET              PORT'];
+  S.cfg.dialPeers.forEach(d=>{
+    L.push(d.tag.padEnd(11)+d.type.padEnd(6)+(operational(d)?'up':'down').padEnd(6)+(d.dest||'').padEnd(22)+(d.type==='pots'?(d.fwd==null?'def':d.fwd):'').padEnd(6)+(d.target||'').padEnd(25)+(d.port||''));
+  });
+  return L.join('\n');
+}
+function showDebug(){
+  const L=[];
+  if(S.debug.q931) L.push('ISDN:','  ISDN Q931 packets debugging is on');
+  if(S.debug.trans) L.push('Voice translation:','  Voice translation rule debugging is on');
+  return L.length?L.join('\n'):'';
+}
+function testRule(v){
+  S.flags.test=true;
+  const r=applyRules(v[3],v[4]);
+  if(r.err) return `% Translation rule ${v[3]} does not exist`;
+  if(!r.rule) return "Didn't match with any of rules";
+  return `Matched with rule ${r.rule}\nOriginal number: ${v[4]}\tTranslated number: ${r.out}\nOriginal number type: none\tTranslated number type: none\nOriginal number plan: none\tTranslated number plan: none`;
+}
+
+/* ---------- call simulation ---------- */
+function q931(dir,msg,called,calling,cause){
+  const se='Se'+dchan(), cr=dir==='RX'?'0x0012':'0x8012';
+  const L=[`${ts()} ISDN ${se} Q931: ${dir} ${dir==='RX'?'<-':'->'} ${msg} pd = 8  callref = ${cr}`];
+  if(msg==='SETUP'){
+    L.push(`        Bearer Capability i = ${S.hw==='e1'?'0x8090A3':'0x8090A2'}`,'                Standard = CCITT','                Transfer Capability = Speech',`        Channel ID i = 0xA98381`,'                Exclusive, Channel 1');
+    L.push(`        Calling Party Number i = 0x2183, '${calling}'`,'                Plan:ISDN, Type:Unknown');
+    L.push(`        Called Party Number i = 0x81, '${called}'`,'                Plan:ISDN, Type:Unknown');
+  }
+  if(cause) L.push(`        Cause i = ${cause}`);
+  return L.map(l=>['q',l]);
+}
+function transDbg(prof,set,num,r){
+  const p=`${ts()} //-1/xxxxxxxxxxxx/RXRULE/`;
+  const L=[['t',`${p}regxrule_profile_translate_internal: number=${num} type=unknown plan=isdn numbertype=called`]];
+  if(r&&r.rule){
+    L.push(['t',`${p}regxrule_profile_match_internal: Matched with rule ${r.rule} in ruleset ${set}`]);
+    L.push(['t',`${p}sed_subst: Successful substitution; pattern=${num} matchPattern=${r.m.replace(/^\/|\/$/g,'')} replacePattern=${r.r.replace(/^\/|\/$/g,'')} replaced pattern=${r.out}`]);
+  } else L.push(['t',`${p}regxrule_profile_match_internal: No match in ruleset ${set}`]);
+  return L;
+}
+function simIn(i){
+  const st=[], dbg=[], did=DIDS[i];
+  const called=C.digits==='7'?did:C.digits==='9'?'07'+did:did.slice(-4);
+  const calling='0912345678';
+  st.push(['i',`中華電信送出來電：被叫號碼 ${called}，發話 ${calling}`]);
+  const iz=isdnState(), fail=(m,cause)=>{ st.push(['x',m]); if(cause) dbg.push(...q931('TX','RELEASE_COMP',null,null,cause)); return {ok:false,st,dbg}; };
+  if(!iz.exists) return fail(`沒有 PRI D 通道（Serial${iz.name}），要先在 controller 設定 pri-group`);
+  if(!iz.up) return fail('ISDN Layer 2 沒有建立，電信端無法送出 SETUP');
+  dbg.push(...q931('RX','SETUP',called,calling));
+  if(!iz.swOk) return fail(`Serial${iz.name} 的 switch-type 是 ${iz.sw||'none'}，與電信端不一致，SETUP 無法正確處理（模擬）`,'0x80E4 - Invalid information element contents');
+  if(!iz.ser.incoming) return fail('Serial 介面沒有 isdn incoming-voice voice，來電被當成數據通話，進不了語音流程','0x80D8 - Incompatible destination');
+  let num=called;
+  const vp=S.cfg.voicePorts[iz.name], pn=vp&&vp.incoming;
+  if(!pn) st.push(['i',`voice-port ${iz.name} 沒有套用 incoming translation-profile，號碼不轉換`]);
+  else {
+    const prof=S.cfg.profiles[pn];
+    if(!prof) st.push(['w',`voice-port 套用的 translation-profile ${pn} 不存在，號碼不轉換`]);
+    else if(!prof.called) st.push(['i',`translation-profile ${pn} 沒有 translate called，號碼不轉換`]);
+    else {
+      const r=applyRules(prof.called,num);
+      if(r.err) st.push(['w',`translation-profile ${pn} 指向的 ${r.err}，號碼不轉換`]);
+      else {
+        dbg.push(...transDbg(pn,prof.called,num,r));
+        if(r.rule){ st.push(['v',`translation-rule ${prof.called} 的 rule ${r.rule} 符合：${num} → ${r.out}`]); num=r.out; }
+        else st.push(['i',`translation-rule ${prof.called} 沒有符合的規則，號碼維持 ${num}`]);
+      }
+    }
+  }
+  const d=bestPeer(num);
+  if(!d) return fail(`沒有任何 dial-peer 符合 ${num}，路由器拒接`,'0x8081 - Unallocated/unassigned number');
+  if(d.type==='voip'){
+    const ip=d.target.replace(/^ipv4:/,'');
+    st.push(['v',`符合 dial-peer ${d.tag}（${d.dest}），送 SIP INVITE 到 ${ip}，被叫 ${num}`]);
+    if(ip!==XRI_IP) return fail(`${ip} 不是 XRI-400，通話無法完成`,'0x809F - Normal, unspecified');
+    if(xriExt().includes(num)){
+      dbg.push(...q931('TX','CALL_PROC'),...q931('TX','ALERTING'));
+      st.push(['v',`XRI-400 內線 ${num} 響鈴`]);
+      return {ok:true,ext:num,st,dbg};
+    }
+    return fail(`XRI-400 沒有內線 ${num}，回覆 404 Not Found，電話不會響`,'0x8081 - Unallocated/unassigned number');
+  }
+  if(d.port.includes(':')) return fail(`符合 dial-peer ${d.tag}（${d.dest}），通話被繞回 PRI，沒有送進內部`,'0x809F - Normal, unspecified');
+  dbg.push(...q931('TX','CALL_PROC'),...q931('TX','ALERTING'));
+  st.push(['v',`符合 dial-peer ${d.tag}（${d.dest}），類比埠 ${d.port} 響鈴`]);
+  return {ok:true,ext:'port '+d.port,st,dbg};
+}
+function simOut(ext,dialed){
+  const st=[], dbg=[], fail=m=>{ st.push(['x',m]); return {ok:false,st,dbg}; };
+  st.push(['i',`內線 ${ext} 撥 ${dialed}，XRI-400 送 SIP INVITE 到路由器`]);
+  if(!/^\d+$/.test(dialed)) return fail('撥打號碼只能是數字');
+  const d=bestPeer(dialed);
+  if(!d) return fail(`沒有任何 dial-peer 符合 ${dialed}，撥不出去`);
+  if(d.type==='voip') return fail(`只符合 dial-peer ${d.tag}（${d.dest}），通話被送回 ${d.target.replace(/^ipv4:/,'')}，打不出去。要補上對應的 POTS dial-peer`);
+  if(!d.port.includes(':')){ st.push(['v',`符合 dial-peer ${d.tag}（${d.dest}），撥到類比埠 ${d.port}`]); return {ok:true,type:'fxs',st,dbg}; }
+  let called=dialed, calling=ext;
+  if(d.profOut){
+    const p=S.cfg.profiles[d.profOut];
+    if(!p) st.push(['w',`dial-peer 套用的 translation-profile ${d.profOut} 不存在`]);
+    else {
+      if(p.called){ const r=applyRules(p.called,called); if(r.rule){ dbg.push(...transDbg(d.profOut,p.called,called,r)); if(r.out!==called) st.push(['i',`outgoing translation-profile ${d.profOut}：被叫 ${called} → ${r.out}`]); called=r.out; } }
+      if(p.calling){ const r=applyRules(p.calling,calling); if(r.rule){ st.push(['i',`outgoing translation-profile ${d.profOut}：發話 ${calling} → ${r.out}`]); calling=r.out; } }
+    }
+  }
+  const sent=forward(d,called);
+  st.push(['v',`符合 dial-peer ${d.tag}（${d.dest}），${fwdDesc(d)}，送出 ${sent||'（空號碼）'}`]);
+  const iz=isdnState();
+  if(!iz.up) return fail('ISDN Layer 2 沒有建立，無法從 PRI 送出');
+  if(!iz.swOk) return fail(`switch-type ${iz.sw||'none'} 與電信端不一致，電信端不接受 SETUP（模擬）`);
+  dbg.push(...q931('TX','SETUP',sent,calling),...q931('RX','CALL_PROC'),...q931('RX','ALERTING'));
+  st.push(['v',`送出 Q.931 SETUP 給中華電信：被叫 ${sent}，發話 ${calling}`]);
+  if(!DIDS.some(x=>calling===x||calling==='07'+x)) st.push(['w',`發話號碼 ${calling} 是內線號碼，不是你的 DID。電信端會改號還是拒接，要實際測試才知道`]);
+  return {ok:true,type:'pri',sent,calling,st,dbg};
+}
+function xriExt(){ return $('#cExt').value.split(/[\s,，]+/).filter(Boolean); }
+
+/* ---------- tasks ---------- */
+const TASKS=[
+  {id:'conf',t:'進入特權模式和全域設定模式',h:()=>'<code>enable</code>，再 <code>configure terminal</code>（可縮寫成 <code>conf t</code>）。'},
+  {id:'l1',t:'讓 controller 0/1/0 起來且沒有告警',h:()=>C.line!==S.hw
+      ?'電信端是 '+C.line.toUpperCase()+'：先 <code>no card type '+S.hw+' 0 1</code>、<code>card type '+C.line+' 0 1</code>，<code>write memory</code> 後 <code>reload</code>，再設定 controller（T1：<code>framing esf</code>、<code>linecode b8zs</code>、<code>clock source line primary</code>、<code>pri-group timeslots 1-24</code>）。'
+      :'<code>show controllers '+S.hw+' 0/1/0</code> 看告警，再到 <code>controller '+S.hw.toUpperCase()+' 0/1/0</code> 調整 framing。'},
+  {id:'l2',t:'ISDN Layer 2 建立',h:()=>'<code>show isdn status</code> 要看到 MULTIPLE_FRAME_ESTABLISHED。D 通道需要 pri-group，Serial 介面不能 shutdown。'},
+  {id:'sw',t:'D 通道的 switch-type 和電信端一致',h:()=>'<code>interface Serial'+dchan()+'</code> 底下 <code>isdn switch-type primary-net5</code>。介面設定會覆蓋全域設定。'},
+  {id:'in',t:'Serial 介面把來電當成語音處理',h:()=>'<code>interface Serial'+dchan()+'</code> 底下 <code>isdn incoming-voice voice</code>。'},
+  {id:'did',t:'5 個 DID 號碼都響到對應的內線',h:()=>'<code>voice translation-rule 50</code> 加一對一規則，例如 <code>rule 2 /^6612001$/ /654321/</code>。中華電信送幾碼，用模擬來電加 <code>debug isdn q931</code> 看 Called Party Number。voice-port '+dchan()+' 也要套用 <code>translation-profile incoming PRI</code>。'},
+  {id:'local',t:'內線能撥本區市話 07-7654321（只送 7 碼）',h:()=>'<code>dial-peer voice 7 pots</code>，<code>destination-pattern 07[2-9]......</code>、<code>port '+dchan()+'</code>、<code>forward-digits 7</code>。'},
+  {id:'ld',t:'內線能撥外縣市市話 02-2345-6789（送完整號碼）',h:()=>'<code>dial-peer voice 8 pots</code>，<code>destination-pattern 0[2-8]T</code>、<code>port '+dchan()+'</code>、<code>forward-digits all</code>。'},
+  {id:'dp518',t:'刪除沒有 port 的 dial-peer 518',h:()=>'<code>no dial-peer voice 518 pots</code>'},
+  {id:'test',t:'用 test voice translation-rule 驗證號碼',h:()=>'特權模式 <code>test voice translation-rule 50 6612001</code>，在設定模式要在前面加 <code>do</code>。'},
+  {id:'save',t:'存檔',h:()=>'<code>write memory</code> 或 <code>copy running-config startup-config</code>。'}
+];
+function evalTasks(){
+  const iz=isdnState(), L1=l1();
+  const loc=simOut('654321','077654321'), ld=simOut('654321','0223456789');
+  return {
+    conf:S.flags.conf,
+    l1:L1.up&&!L1.warns.length,
+    l2:iz.up,
+    sw:iz.exists&&iz.swOk,
+    in:iz.exists&&iz.ser.incoming,
+    did:DIDS.every((_,i)=>{ const r=simIn(i); return r.ok&&r.ext===TARGETS[i]; }),
+    local:loc.ok&&loc.type==='pri'&&loc.sent==='7654321',
+    ld:ld.ok&&ld.type==='pri'&&ld.sent==='0223456789',
+    dp518:!S.cfg.dialPeers.some(d=>d.tag==='518'),
+    test:S.flags.test,
+    save:S.flags.saved&&!S.dirty
+  };
+}
+const openHints=new Set();
+function renderTasks(){
+  const r=evalTasks(); let n=0;
+  const ol=$('#tasks'); ol.innerHTML='';
+  TASKS.forEach(t=>{
+    const done=!!r[t.id]; if(done) n++;
+    const li=document.createElement('li'); if(done) li.className='done';
+    li.innerHTML=`<span class="box" aria-hidden="true"></span><span class="tt">${t.t}${done?'<span class="sr" style="position:absolute;left:-9999px">（完成）</span>':''}</span><details ${openHints.has(t.id)?'open':''}><summary>提示</summary><div>${t.h()}</div></details>`;
+    li.querySelector('details').addEventListener('toggle',e=>{ e.target.open?openHints.add(t.id):openHints.delete(t.id); });
+    ol.appendChild(li);
+  });
+  $('#prog').textContent=`${n}/${TASKS.length}`;
+  $('#meter').style.width=(n/TASKS.length*100)+'%';
+}
+
+/* ---------- refresh ---------- */
+function setLed(id,s){ const e=$('#'+id); e.className='led'+(s?' '+s:''); }
+function refresh(){
+  promptEl.textContent=promptStr();
+  const L1=l1(), iz=isdnState();
+  setLed('ledL1',L1.up?(L1.warns.length?'warn':'on'):'bad');
+  $('#lblL1').textContent=S.hw.toUpperCase()+' 0/1/0';
+  setLed('ledL2',iz.up?'on':'bad');
+  setLed('ledSave',S.dirty?'warn':'');
+  $('#lblSave').textContent=S.dirty?'未存檔':'已存檔';
+  $('#pend').textContent=(S.cfg.cardType&&S.cfg.cardType!==S.hw)?`card type ${S.cfg.cardType.toUpperCase()} 待 reload`:'';
+  renderTasks();
+}
+
+/* ---------- input handling ---------- */
+function analyze(raw){
+  let str=raw, roots=modeRoots(S.mode);
+  const pi=str.indexOf('|'); if(pi>=0){ roots=pipeRoots(); str=str.slice(pi+1); }
+  const endsSpace=str.length===0||/\s$/.test(str);
+  const toks=str.trim().split(/\s+/).filter(Boolean);
+  const partial=endsSpace?'':toks.pop();
+  const r=walk(toks,roots);
+  if(r.err) return {err:r.err,i:r.i};
+  if(r.done) return {done:true,children:[],partial:'',runnable:true};
+  const vals=r.vals||[];
+  const neg=vals[0]==='no'||(vals[0]==='do'&&vals[1]==='no');
+  const children=r.node?kids(r.node):roots;
+  const runnable=r.node?(!!r.node.run&&(!r.node.nOnly||neg)):false;
+  return {children,partial,runnable};
+}
+function cands(children,partial){
+  const low=partial.toLowerCase(), set=[];
+  children.forEach(n=>{
+    if(n.t==='k'&&n.k.toLowerCase().startsWith(low)) set.push(n.k);
+    if(n.t==='p'&&n.sug) n.sug().forEach(s=>{ if(s.toLowerCase().startsWith(low)&&!set.includes(s)) set.push(s); });
+  });
+  return set;
+}
+function helpList(children,runnable){
+  const items=children.map(n=>[n.t==='k'?n.k:n.label,n.h||'']);
+  if(runnable) items.push(['<cr>','']);
+  const w=Math.max(4,...items.map(i=>i[0].length));
+  return items.map(([a,b])=>'  '+a.padEnd(w+2)+b).join('\n');
+}
+function caret(raw,idx){
+  const m=[...raw.matchAll(/\S+/g)][idx];
+  print(' '.repeat(promptStr().length+(m?m.index:raw.length))+'^','err');
+  print("% Invalid input detected at '^' marker.");
+}
+function doHelp(){
+  if(S.pending) return;
+  const raw=fix(inp.value);
+  print(promptStr()+raw+'?');
+  const a=analyze(raw);
+  if(a.err==='amb') print(`% Ambiguous command:  "${raw.trim()}"`);
+  else if(a.err) caret(raw,a.i);
+  else if(a.partial){ const c=cands(a.children,a.partial); print(c.length?c.join('  '):'% Unrecognized command'); }
+  else if(!a.children.length&&!a.runnable) print('% Unrecognized command');
+  else print(helpList(a.children,a.runnable));
+  inp.value=raw; scrollDown();
+}
+function doTab(){
+  if(S.pending) return;
+  const raw=fix(inp.value), a=analyze(raw);
+  if(a.err||a.done){ flash(); return; }
+  if(!a.partial){
+    if(!a.children.length){ flash(); return; }
+    print(promptStr()+raw); print(helpList(a.children,a.runnable)); scrollDown(); return;
+  }
+  const c=cands(a.children,a.partial), base=raw.slice(0,raw.length-a.partial.length);
+  if(c.length===1) inp.value=base+c[0]+' ';
+  else if(c.length>1){
+    let cp=c[0];
+    c.forEach(x=>{ let i=0; while(i<cp.length&&i<x.length&&cp[i].toLowerCase()===x[i].toLowerCase()) i++; cp=cp.slice(0,i); });
+    if(cp.length>a.partial.length) inp.value=base+cp;
+    else { print(promptStr()+raw); print(c.join('  ')); scrollDown(); }
+  } else flash();
+  const L=inp.value.length; inp.setSelectionRange(L,L);
+}
+function applyPipe(text,pipe){
+  const [kw,...rest]=pipe.trim().split(/\s+/), pat=rest.join(' ');
+  const k=['begin','include','section'].find(w=>kw&&w.startsWith(kw.toLowerCase()));
+  if(!k||!pat) return '% Incomplete or invalid filter after |';
+  let re; try{ re=new RegExp(pat); }catch(e){ return '% Invalid regular expression'; }
+  const lines=text.split('\n');
+  if(k==='include') return lines.filter(l=>re.test(l)).join('\n');
+  if(k==='begin'){ const i=lines.findIndex(l=>re.test(l)); return i<0?'':lines.slice(i).join('\n'); }
+  const o=[]; let on=false;
+  lines.forEach(l=>{ if(!/^\s/.test(l)) on=re.test(l); if(on) o.push(l); });
+  return o.join('\n');
+}
+function execute(rawIn){
+  const raw=fix(rawIn); let line=raw.trim(); if(!line) return;
+  let pipe=null; const pi=line.indexOf('|');
+  if(pi>=0){ pipe=line.slice(pi+1); line=line.slice(0,pi).trim(); }
+  const toks=line.split(/\s+/);
+  let r=walk(toks,modeRoots(S.mode));
+  if(r.err&&isSub(S.mode)){
+    const r2=walk(toks,configRoots());
+    if(!r2.err&&r2.node&&r2.node.run){ S.mode='config'; S.ctx=null; r=r2; }
+  }
+  if(r.err==='amb'){ print(`% Ambiguous command:  "${line}"`); return; }
+  if(r.err){ caret(raw,r.i); return; }
+  let vals=r.vals, neg=false;
+  if(vals[0]==='do') vals=vals.slice(1);
+  if(vals[0]==='no'){ neg=true; vals=vals.slice(1); }
+  const node=r.node;
+  if(!node.run||(node.nOnly&&!neg)){ print('% Incomplete command.'); return; }
+  const res=node.run(vals,{neg});
+  if(typeof res==='string'&&res.length) print(pipe?applyPipe(res,pipe):res);
+}
+function submit(){
+  const v=inp.value; inp.value='';
+  if(S.pending){ const p=S.pending; S.pending=null; print(p.prompt+v); p.handler(v); }
+  else {
+    print(promptStr()+v);
+    if(v.trim()){ S.history.push(v); if(S.history.length>200) S.history.shift(); }
+    S.hidx=S.history.length;
+    execute(v);
+  }
+  refresh(); scrollDown();
+}
+function hist(dir){
+  if(!S.history.length) return;
+  S.hidx=Math.max(0,Math.min(S.history.length,S.hidx+dir));
+  inp.value=S.history[S.hidx]||'';
+  const L=inp.value.length; inp.setSelectionRange(L,L);
+}
+function ctrlZ(){
+  if(S.pending) return;
+  print(promptStr()+inp.value+'^Z'); inp.value='';
+  if(S.mode!=='exec'&&S.mode!=='priv') print(toPriv(),'log');
+  refresh(); scrollDown();
+}
+inp.addEventListener('keydown',e=>{
+  if(e.isComposing) return;
+  if(e.key==='Tab'){ e.preventDefault(); doTab(); }
+  else if(e.key==='?'){ e.preventDefault(); doHelp(); }
+  else if(e.key==='Enter'){ e.preventDefault(); submit(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); hist(-1); }
+  else if(e.key==='ArrowDown'){ e.preventDefault(); hist(1); }
+  else if(e.ctrlKey&&(e.key==='z'||e.key==='Z')){ e.preventDefault(); ctrlZ(); }
+  else if(e.ctrlKey&&(e.key==='c'||e.key==='C')&&!String(window.getSelection())){ e.preventDefault(); print(promptStr()+inp.value); inp.value=''; scrollDown(); }
+});
+inp.addEventListener('input',()=>{
+  const i=inp.value.indexOf('?');
+  if(i>=0){ inp.value=inp.value.slice(0,i); doHelp(); }
+});
+screen.addEventListener('click',()=>{ if(!String(window.getSelection())) inp.focus(); });
+document.querySelectorAll('.keys button').forEach(b=>{
+  b.addEventListener('pointerdown',e=>e.preventDefault());
+  b.addEventListener('click',()=>{
+    const k=b.dataset.k;
+    if(k==='tab') doTab(); else if(k==='?') doHelp(); else if(k==='up') hist(-1); else if(k==='down') hist(1); else if(k==='z') ctrlZ(); else submit();
+    inp.focus();
+  });
+});
+
+/* ---------- side panel ---------- */
+document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b?'true':'false'));
+  ['tasks','call','carrier'].forEach(id=>$('#tab-'+id).hidden=id!==b.dataset.tab);
+}));
+$('#inDid').innerHTML=DIDS.map((d,i)=>`<option value="${i}">07-${d}</option>`).join('');
+$('#didList').innerHTML=DIDS.map((d,i)=>`<li>07-${d} → 內線 ${TARGETS[i]}</li>`).join('');
+function renderTrace(title,r){
+  const t=$('#trace'); t.innerHTML='';
+  const p=document.createElement('p'); p.className='tt '+(r.ok?'good':'bad'); p.textContent=`${title}：${r.ok?'成功':'失敗'}`; t.appendChild(p);
+  const ol=document.createElement('ol');
+  r.st.forEach(([k,m])=>{ const li=document.createElement('li'); li.className=k; li.textContent=m; ol.appendChild(li); });
+  t.appendChild(ol);
+  const lines=r.dbg.filter(([k])=>(k==='q'&&S.debug.q931)||(k==='t'&&S.debug.trans));
+  if(lines.length){ lines.forEach(([,l])=>print(l,'dbg')); scrollDown(); }
+}
+$('#btnIn').addEventListener('click',()=>{ const i=+$('#inDid').value; renderTrace(`外線撥 07-${DIDS[i]}`,simIn(i)); });
+$('#btnOut').addEventListener('click',()=>{ const e=$('#outExt').value.trim(), n=$('#outNum').value.trim(); renderTrace(`內線 ${e} 撥 ${n}`,simOut(e,n)); });
+document.querySelectorAll('.chips button').forEach(b=>b.addEventListener('click',()=>{ $('#outNum').value=b.dataset.n; }));
+
+function syncCarrierUI(){
+  $('#cLine').value=C.line; $('#cFrame').value=C.e1framing; $('#cDigits').value=C.digits; $('#cSw').value=C.sw;
+  $('#cVisible').hidden=C.hidden; $('#cHidden').hidden=!C.hidden;
+}
+$('#cLine').addEventListener('change',e=>{ C.line=e.target.value; refresh(); });
+$('#cFrame').addEventListener('change',e=>{ C.e1framing=e.target.value; refresh(); });
+$('#cDigits').addEventListener('change',e=>{ C.digits=e.target.value; refresh(); });
+$('#cSw').addEventListener('change',e=>{ C.sw=e.target.value; refresh(); });
+$('#cExt').addEventListener('input',()=>refresh());
+$('#btnRandom').addEventListener('click',()=>{
+  C.e1framing=Math.random()<.5?'crc4':'no-crc4';
+  C.digits=['7','9','4'][Math.floor(Math.random()*3)];
+  C.hidden=true; syncCarrierUI(); refresh();
+});
+$('#btnReveal').addEventListener('click',()=>{ C.hidden=false; syncCarrierUI(); refresh(); });
+$('#btnReset').addEventListener('click',()=>{ freshState(); freshCarrier(); syncCarrierUI(); out.innerHTML=''; $('#trace').innerHTML=''; welcome(); refresh(); inp.focus(); });
+
+function welcome(){
+  print('LAB-RTR-A 模擬器：中華電信 PRI 介接練習','dim');
+  print('Tab 補齊指令或列出選項，? 查看可用參數，↑↓ 叫出歷史指令，Ctrl+Z 回到特權模式。','dim');
+  print('先輸入 enable 開始。這是簡化的模擬，告警與 debug 輸出僅供練習參考。\n','dim');
+}
+welcome(); syncCarrierUI(); refresh();
+inp.focus({preventScroll:true});
+})();
+</script>
+</body>
+</html>
