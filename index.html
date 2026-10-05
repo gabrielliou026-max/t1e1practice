@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>語音介接 CLI 練習器</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Noto+Sans+TC:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#D5DACD;--panel:#EDEFE6;--ink:#1E2923;--muted:#55625A;--line:#B5BDAE;--olive:#4C5A2E}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111714;--panel:#1B231F;--ink:#DCE3D4;--muted:#96A298;--line:#2D3832;--olive:#8A9C55}}
+:root[data-theme="dark"]{--bg:#111714;--panel:#1B231F;--ink:#DCE3D4;--muted:#96A298;--line:#2D3832;--olive:#8A9C55}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans TC",system-ui,sans-serif;line-height:1.6}
+main{max-width:720px;margin:0 auto;padding:40px 18px}
+h1{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:1.5rem;margin:0 0 6px}
+p{color:var(--muted);margin:0 0 24px}
+a.card{display:block;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--olive);border-radius:6px;padding:16px 18px;margin-bottom:14px;color:var(--ink);text-decoration:none}
+a.card:hover,a.card:focus-visible{border-color:var(--olive);outline:none}
+a.card strong{display:block;font-size:1.05rem}
+a.card span{color:var(--muted);font-size:.92rem}
+</style>
+</head>
+<body>
+<main>
+<h1>語音介接 CLI 練習器</h1>
+<p>模擬 Cisco IOS 的指令列，支援 Tab 補齊與 ? 說明。告警與 debug 輸出為簡化的練習用模擬。</p>
+<a class="card" href="pri-cli-lab.html"><strong>中華電信 E1/T1 PRI 介接</strong><span>LAB-RTR-A：framing、switch-type、DID 號碼轉換、撥出 dial-peer</span></a>
+<a class="card" href="fit50-cas-lab.html"><strong>CN 與 FIT-50 介接（T1 CAS）</strong><span>LAB-RTR-B：ds0-group E&amp;M wink-start、dial-peer、SIGMA trunk 與 Routing Address</span></a>
+</main>
+</body>
+</html>
