@@ -124,7 +124,15 @@ function fwdDesc(d){
    o.modes          {模式: {roots, prompt}}；exec / priv / config 以外都視為子模式
    o.refresh()      每次送出指令、按 Ctrl+Z 之後呼叫
    o.fix(s)         選用，送出前整理輸入
-   o.newDialPeer    選用，新建 dial-peer 的初始內容 */
+   o.newDialPeer    選用，新建 dial-peer 的初始內容
+   o.doneHint       選用，任務全部完成後按提示顯示的文字
+
+   任務可以帶 g()，回傳分三層的提示：
+     {where, a, b, c}
+     where  做這一步要在哪裡：{mode, enter, at(ctx)} 是終端機的模式，{tab, name} 是右側分頁
+     a      第 1 層：方向，不講指令
+     b      第 2 層：要用哪個指令
+     c      第 3 層：完整指令（字串或陣列）；省略時用任務的 h */
 function createTerminal(o){
   const out=$('#out'), inp=$('#cmd'), screen=$('#screen');
   const st=()=>o.state();
@@ -254,8 +262,11 @@ function createTerminal(o){
     } else flash();
     const L=inp.value.length; inp.setSelectionRange(L,L);
   }
+  let errStreak=0;
+  function failed(){ if(++errStreak===3) print('卡住了嗎？按下方的「提示」或輸入 hint，會告訴你下一步。','hint'); }
   function execute(rawIn){
     const S=st(), raw=fix(rawIn); let line=raw.trim(); if(!line) return;
+    if(/^hint$/i.test(line)){ hint(); return; }
     let pipe=null; const pi=line.indexOf('|');
     if(pi>=0){ pipe=line.slice(pi+1); line=line.slice(0,pi).trim(); }
     const toks=line.split(/\s+/);
@@ -264,13 +275,14 @@ function createTerminal(o){
       const r2=walk(toks,configRoots());
       if(!r2.err&&r2.node&&r2.node.run){ S.mode='config'; S.ctx=null; r=r2; }
     }
-    if(r.err==='amb'){ print(`% Ambiguous command:  "${line}"`); return; }
-    if(r.err){ caret(raw,r.i); return; }
+    if(r.err==='amb'){ print(`% Ambiguous command:  "${line}"`); failed(); return; }
+    if(r.err){ caret(raw,r.i); failed(); return; }
     let vals=r.vals, neg=false;
     if(vals[0]==='do') vals=vals.slice(1);
     if(vals[0]==='no'){ neg=true; vals=vals.slice(1); }
     const node=r.node;
-    if(!node.run||(node.nOnly&&!neg)){ print('% Incomplete command.'); return; }
+    if(!node.run||(node.nOnly&&!neg)){ print('% Incomplete command.'); failed(); return; }
+    errStreak=0;
     const res=node.run(vals,{neg});
     if(typeof res==='string'&&res.length) print(pipe?applyPipe(res,pipe):res);
   }
@@ -316,7 +328,7 @@ function createTerminal(o){
     b.addEventListener('pointerdown',e=>e.preventDefault());
     b.addEventListener('click',()=>{
       const k=b.dataset.k;
-      if(k==='tab') doTab(); else if(k==='?') doHelp(); else if(k==='up') hist(-1); else if(k==='down') hist(1); else if(k==='z') ctrlZ(); else submit();
+      if(k==='tab') doTab(); else if(k==='?') doHelp(); else if(k==='hint') hint(); else if(k==='up') hist(-1); else if(k==='down') hist(1); else if(k==='z') ctrlZ(); else submit();
       inp.focus();
     });
   });
@@ -329,11 +341,14 @@ function createTerminal(o){
     });
   }));
   const openHints=new Set();
+  let lastTasks=[], lastResults={};
   function renderTasks(tasks,results){
+    lastTasks=tasks; lastResults=results;
+    const next=tasks.find(t=>!results[t.id]);
     let n=0; const ol=$('#tasks'); ol.innerHTML='';
     tasks.forEach(t=>{
       const done=!!results[t.id]; if(done) n++;
-      const li=document.createElement('li'); if(done) li.className='done';
+      const li=document.createElement('li'); if(done) li.className='done'; else if(t===next) li.className='now';
       const h=typeof t.h==='function'?t.h():t.h;
       li.innerHTML=`<span class="box" aria-hidden="true"></span><span class="tt">${t.t}${done?'<span class="sr" style="position:absolute;left:-9999px">（完成）</span>':''}</span><details ${openHints.has(t.id)?'open':''}><summary>提示</summary><div>${h}</div></details>`;
       li.querySelector('details').addEventListener('toggle',e=>{ e.target.open?openHints.add(t.id):openHints.delete(t.id); });
@@ -353,11 +368,52 @@ function createTerminal(o){
     const lines=r.dbg.filter(([k])=>show(k));
     if(lines.length){ lines.forEach(([,l])=>print(l,'dbg')); scrollDown(); }
   }
-  function clear(){ out.innerHTML=''; $('#trace').innerHTML=''; }
+  /* ---------- hints ---------- */
+  const plain=html=>{ const d=document.createElement('div'); d.innerHTML=html; return d.textContent; };
+  const MODE_NAME={exec:'使用者模式',priv:'特權模式',config:'全域設定模式'};
+  /* 從目前模式走到 w 指定的模式要打哪些指令 */
+  function route(w){
+    const S=st(), m=S.mode, sub=isSub(m), steps=[];
+    if(w.mode==='exec') return steps;
+    if(m==='exec') steps.push('enable');
+    if(w.mode==='priv'){ if(m==='config'||sub) steps.push('end'); return steps; }
+    if(m==='exec'||m==='priv') steps.push('configure terminal');
+    if(w.mode==='config'){ if(sub) steps.push('exit'); return steps; }
+    if(m!==w.mode||(w.at&&!w.at(S.ctx))) steps.push(w.enter);
+    return steps;
+  }
+  function where(w){
+    if(!w) return null;
+    if(w.tab) return `這一步不在終端機，要到右側「${w.name}」分頁操作。`;
+    const steps=route(w), m=st().mode;
+    const here=`你現在在${MODE_NAME[m]||'子設定模式'}（${promptStr()}）`;
+    return steps.length?`${here}，先輸入：${steps.join(' → ')}`:`${here}，位置正確，可以直接輸入。`;
+  }
+  let hs={id:null,level:0};
+  function hint(){
+    if(st().pending) return;
+    errStreak=0;
+    const t=lastTasks.find(x=>!lastResults[x.id]);
+    if(!t){ print(o.doneHint||'全部任務都完成了。','hint'); scrollDown(); return; }
+    hs.level=hs.id===t.id?Math.min(3,hs.level+1):1; hs.id=t.id;
+    const g=t.g?t.g():{}, lv=hs.level;
+    const L=[`提示 ${lv}/3｜任務 ${lastTasks.indexOf(t)+1}：${plain(t.t)}`];
+    const nav=where(g.where);
+    if(lv===1) L.push(g.a||'看右側任務的說明。');
+    if(lv>=2&&nav) L.push(nav);
+    if(lv===2) L.push(g.b||'');
+    if(lv===3){
+      const c=g.c||plain(typeof t.h==='function'?t.h():t.h);
+      L.push(...(Array.isArray(c)?c:[c]));
+    }
+    L.push(lv<3?'（再按一次提示，看更具體的做法）':'（做完後再按提示，會換下一個任務）');
+    print(L.filter(Boolean).map((l,i)=>i?'  '+l:l).join('\n'),'hint'); scrollDown();
+  }
+  function clear(){ out.innerHTML=''; $('#trace').innerHTML=''; hs={id:null,level:0}; errStreak=0; }
   function focus(opts){ inp.focus(opts); }
 
   return {print,scrollDown,mark,promptStr,withCommon,enterConfig,toPriv,exitMode,logout,enterDP,doSave,save,copyRun,
-    dialPeerNodes,showDP,renderTasks,setLed,renderTrace,clear,focus};
+    dialPeerNodes,showDP,renderTasks,setLed,renderTrace,clear,focus,hint};
 }
 
 window.CliCore={$,clone,ts,K,NUM,WORD,LINE,isIp,isDial,sortK,patInfo,operational,bestPeer,forward,fwdDesc,createTerminal};
