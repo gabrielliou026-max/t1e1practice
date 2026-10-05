@@ -60,13 +60,15 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font
 #out .err{color:var(--err)}
 #out .dbg{color:var(--dbg)}
 #out .log{color:var(--term-dim)}
+#out .hint{color:var(--ok)}
 .inline{display:flex;align-items:baseline}
 #prompt{white-space:pre;color:var(--prompt)}
 #cmd{flex:1;min-width:40px;background:transparent;border:0;outline:0;color:var(--term-ink);font:inherit;padding:0;caret-color:var(--prompt)}
-.keys{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:#000;border-top:1px solid #000}
+.keys{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#000;border-top:1px solid #000}
 .keys button{font-family:var(--mono);font-size:13px;padding:11px 4px;background:var(--term-bar);color:var(--term-ink);border:0;cursor:pointer}
 .keys button:active{background:#33403a}
 .keys button:focus-visible{outline:2px solid var(--prompt);outline-offset:-2px}
+.keys button.hintkey{color:var(--ok);font-family:var(--sans);font-weight:700}
 
 /* side */
 .side{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
@@ -89,6 +91,8 @@ ol.tasks .box::before{content:counter(t)}
 ol.tasks li.done .box{background:var(--olive);border-color:var(--olive);color:var(--olive-ink)}
 ol.tasks li.done .box::before{content:"✓";font-size:13px}
 ol.tasks li.done .tt{color:var(--muted)}
+ol.tasks li.now .box{border-color:var(--amber);color:var(--amber);border-width:2px}
+ol.tasks li.now .tt{font-weight:700}
 ol.tasks details{grid-column:2;font-size:.85rem;color:var(--muted)}
 ol.tasks summary{cursor:pointer;width:max-content}
 ol.tasks code,.pane code{font-family:var(--mono);font-size:.82rem;background:rgba(127,140,120,.16);padding:1px 4px;border-radius:3px}
@@ -157,6 +161,7 @@ button.del{font:inherit;font-size:.8rem;padding:2px 8px;border:1px solid var(--l
         <button data-k="up">↑</button>
         <button data-k="down">↓</button>
         <button data-k="z">Ctrl+Z</button>
+        <button data-k="hint" class="hintkey">提示</button>
         <button data-k="enter">Enter</button>
       </div>
     </section>
@@ -250,6 +255,7 @@ fresh();
 
 const T=CliCore.createTerminal({
   state:()=>S, refresh:()=>refresh(),
+  doneHint:'全部任務都完成了。可以按任務分頁的「重設練習」從頭再練一次。',
   modes:{exec:{roots:execRoots,prompt:'>'},priv:{roots:privRoots,prompt:'#'},config:{roots:configRoots,prompt:'(config)#'},ctl:{roots:ctlRoots,prompt:'(config-controller)#'},dp:{roots:dpRoots,prompt:'(config-dial-peer)#'}},
   newDialPeer:(tag,type)=>type==='voip'?{tag,type,vad:true}:{tag,type}
 });
@@ -542,6 +548,53 @@ const TASKS=[
   {id:'callB',t:'步驟 4.2：FIT-50 撥 360201 打通 VoIP',h:'到模擬通話分頁按「FIT-50 打 VoIP」的撥出。可以開 <code>debug vpm signal</code> 看 seize 和 wink。'},
   {id:'save',t:'存檔',h:'<code>write memory</code> 或 <code>copy running-config startup-config</code>。'}
 ];
+/* 分三層的提示：a 方向、b 用哪個指令、c 完整指令。見 cli-core.js 的 createTerminal 說明 */
+const failOf=r=>(r.st.filter(([k])=>k==='x').pop()||['',''])[1];
+const atCtl={mode:'ctl',enter:'controller t1 0/1/0',at:c=>c&&c.name==='0/1/0'};
+const atDp=(tag,type)=>({mode:'dp',enter:`dial-peer voice ${tag} ${type}`,at:c=>c&&c.tag===tag});
+/* 列出 dial-peer 還沒設好的項目：want 是 [欄位, 正確值, 指令] */
+function missing(d,type,want){
+  const c=[];
+  if(d&&d.type!==type) c.push(`（dial-peer ${d.tag} 已經是 ${d.type}，先在設定模式用 no dial-peer voice ${d.tag} 刪掉）`);
+  want.forEach(([k,v,cmd])=>{ if(!d||d.type!==type||d[k]!==v) c.push(cmd); });
+  return c;
+}
+const HINTS={
+  conf:()=>({where:{mode:'config'},a:'要先進入設定模式，才能修改路由器的設定。',b:'enable 進入特權模式（提示字元變成 #），再用 configure terminal 進入設定模式。',c:['enable','configure terminal（可以縮寫成 conf t）']}),
+  ctl:()=>{
+    const c=S.cfg.controllers['0/1/0'], miss=[];
+    if(c.framing!=='esf') miss.push('framing esf');
+    if(c.linecode!=='b8zs') miss.push('linecode b8zs');
+    if(c.clock!=='line primary') miss.push('clock source line primary');
+    if(c.cable!=='short 110') miss.push('cablelength short 110');
+    return {where:atCtl,a:'controller T1 0/1/0 還是出廠預設值，實體層參數要跟 FIT-50 一致，線路才會起來。先用 show controllers t1 0/1/0 看告警。',b:`到 controller 底下設定 framing、linecode、clock source、cablelength 四項，每一項都可以打 ? 看選項。還有 ${miss.length} 項沒設好。`,c:miss};
+  },
+  ds0:()=>{
+    const g=S.cfg.controllers['0/1/0'].ds0, c=[];
+    if(g&&g.num!=='1') c.push(`no ds0-group ${g.num}`);
+    c.push('ds0-group 1 timeslots 1-24 type e&m-wink-start');
+    return {where:atCtl,a:'controller 要設定 ds0-group 才會產生語音埠，信令要跟 FIT-50 一樣用 E&M wink-start。',b:'在 controller 底下用 ds0-group：channel 用 1、timeslots 用 1-24，type 打 ? 找 wink-start 那一個。',c};
+  },
+  dp100:()=>{
+    const d=S.cfg.dialPeers.find(x=>x.tag==='100');
+    const c=missing(d,'voip',[['dest','.T','destination-pattern .T'],['proto','sipv2','session protocol sipv2'],['target','ipv4:'+XRI_IP,'session target ipv4:'+XRI_IP],['transport','udp','session transport udp'],['dtmf','rtp-nte','dtmf-relay rtp-nte'],['codec','g711ulaw','codec g711ulaw'],['vad',false,'no vad']]);
+    return {where:atDp('100','voip'),a:'FIT-50 打進來的電話，路由器要用一個 VoIP dial-peer 送到 SIGMA。',b:`建立 dial-peer voice 100 voip，設定 destination-pattern、session protocol / target / transport、dtmf-relay、codec，最後關掉 vad。SIGMA 的位址是 ${XRI_IP}。還有 ${c.length} 項沒設好。`,c};
+  },
+  dp900:()=>{
+    const g=ds0();
+    if(!g) return {where:atCtl,a:'dial-peer 900 要指向 T1 的語音埠，但 controller 還沒有 ds0-group。',b:'先到 controller 底下設定 ds0-group。',c:['ds0-group 1 timeslots 1-24 type e&m-wink-start']};
+    const d=S.cfg.dialPeers.find(x=>x.tag==='900');
+    const c=missing(d,'pots',[['dest','900...','destination-pattern 900...'],['port',g.port,'port '+g.port],['fwd','all','forward-digits all']]);
+    return {where:atDp('900','pots'),a:'SIGMA 打 FIT-50 的電話，路由器要用一個 POTS dial-peer 從 T1 語音埠送出去。',b:'建立 dial-peer voice 900 pots，設定 destination-pattern、port、forward-digits。沒設 forward-digits 的話，預設會把開頭的 900 去掉。',c};
+  },
+  trunk:()=>({where:{tab:'sigma',name:'SIGMA'},a:'SIGMA 要知道 FIT-50 trunk 的 SIP 要送到哪裡，答案是路由器的 Loopback0。',b:'在終端機用 show ip interface brief 查 Loopback0 的位址，再到 SIGMA 分頁填 Destination URI Address。',c:[`Destination URI Address 填 sip:${LOOP}:5060，按 Save My Changes`]}),
+  route:()=>({where:{tab:'sigma',name:'SIGMA'},a:'SIGMA 要有一筆 Routing Address，才知道撥 900000 要送往 FIT-50 trunk。',b:'到 SIGMA 分頁的 Routing Address 區塊新增一筆。',c:['Address 填 900000，Name 填 FIT-50，按 Save Changes']}),
+  callA:()=>{ const r=simA('360201','900000'); return {where:{tab:'call',name:'模擬通話'},a:'設定都做完了，實際撥一通「VoIP 打 FIT-50」驗證。',b:r.ok?'目前的設定可以打通，到模擬通話分頁按「VoIP 打 FIT-50」的撥出。':`現在撥會失敗：${failOf(r)}`,c:r.ok?['發話內線 360201、撥打號碼 900000，按撥出']:[`失敗原因：${failOf(r)}`,'修好之後，發話內線 360201、撥打號碼 900000，按撥出']}; },
+  callB:()=>{ const r=simB('900000','360201'); return {where:{tab:'call',name:'模擬通話'},a:'實際撥一通「FIT-50 打 VoIP」驗證另一個方向。',b:r.ok?'目前的設定可以打通，到模擬通話分頁按「FIT-50 打 VoIP」的撥出。':`現在撥會失敗：${failOf(r)}`,c:r.ok?['FIT-50 用戶 900000、撥打號碼 360201，按撥出']:[`失敗原因：${failOf(r)}`,'修好之後，FIT-50 用戶 900000、撥打號碼 360201，按撥出']}; },
+  save:()=>({where:{mode:'priv'},a:'設定還沒存檔，重開機就會不見。',b:'在特權模式把 running-config 存到 startup-config。',c:['write memory（或 copy running-config startup-config）']})
+};
+TASKS.forEach(t=>{ t.g=HINTS[t.id]; });
+
 function evalTasks(){
   const c=S.cfg.controllers['0/1/0'], g=ds0(), L=l1();
   const d100=S.cfg.dialPeers.find(d=>d.tag==='100'), d900=S.cfg.dialPeers.find(d=>d.tag==='900');
@@ -605,6 +658,7 @@ $('#btnReset').addEventListener('click',()=>{ fresh(); T.clear(); $('#sgUri').va
 function welcome(){
   print('LAB-RTR-B 模擬器：CN 與 FIT-50 介接（T1 CAS）','dim');
   print('Tab 補齊指令或列出選項，? 查看可用參數，↑↓ 叫出歷史指令，Ctrl+Z 回到特權模式。','dim');
+  print('卡住時按下方的「提示」或輸入 hint，每多按一次會說得更具體。','hint');
   print('controller T1 0/1/0 目前是出廠預設值，dial-peer 也還沒建立。先輸入 enable 開始。\n','dim');
 }
 welcome(); renderSigma(); refresh();

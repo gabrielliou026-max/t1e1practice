@@ -60,13 +60,15 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font
 #out .err{color:var(--err)}
 #out .dbg{color:var(--dbg)}
 #out .log{color:var(--term-dim)}
+#out .hint{color:var(--ok)}
 .inline{display:flex;align-items:baseline}
 #prompt{white-space:pre;color:var(--prompt)}
 #cmd{flex:1;min-width:40px;background:transparent;border:0;outline:0;color:var(--term-ink);font:inherit;padding:0;caret-color:var(--prompt)}
-.keys{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:#000;border-top:1px solid #000}
+.keys{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#000;border-top:1px solid #000}
 .keys button{font-family:var(--mono);font-size:13px;padding:11px 4px;background:var(--term-bar);color:var(--term-ink);border:0;cursor:pointer}
 .keys button:active{background:#33403a}
 .keys button:focus-visible{outline:2px solid var(--prompt);outline-offset:-2px}
+.keys button.hintkey{color:var(--ok);font-family:var(--sans);font-weight:700}
 
 /* side */
 .side{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
@@ -89,6 +91,8 @@ ol.tasks .box::before{content:counter(t)}
 ol.tasks li.done .box{background:var(--olive);border-color:var(--olive);color:var(--olive-ink)}
 ol.tasks li.done .box::before{content:"✓";font-size:13px}
 ol.tasks li.done .tt{color:var(--muted)}
+ol.tasks li.now .box{border-color:var(--amber);color:var(--amber);border-width:2px}
+ol.tasks li.now .tt{font-weight:700}
 ol.tasks details{grid-column:2;font-size:.85rem;color:var(--muted)}
 ol.tasks summary{cursor:pointer;width:max-content}
 ol.tasks code,.pane code{font-family:var(--mono);font-size:.82rem;background:rgba(127,140,120,.16);padding:1px 4px;border-radius:3px}
@@ -148,6 +152,7 @@ input.t{font-family:var(--mono)}
         <button data-k="up">↑</button>
         <button data-k="down">↓</button>
         <button data-k="z">Ctrl+Z</button>
+        <button data-k="hint" class="hintkey">提示</button>
         <button data-k="enter">Enter</button>
       </div>
     </section>
@@ -272,6 +277,7 @@ const fix=s=>s.replace(/^(\s*(?:do\s+)?(?:no\s+)?int[a-z]*\s+)(se[a-z]*)(\d)/i,'
 
 const T=CliCore.createTerminal({
   state:()=>S, refresh:()=>refresh(), fix,
+  doneHint:'全部任務都完成了。可以到「電信端」分頁按「隨機出題」，在看不到電信端參數的情況下再練一次。',
   modes:{exec:{roots:execRoots,prompt:'>'},priv:{roots:privRoots,prompt:'#'},config:{roots:configRoots,prompt:'(config)#'},ctl:{roots:ctlRoots,prompt:'(config-controller)#'},if:{roots:ifRoots,prompt:'(config-if)#'},rule:{roots:ruleRoots,prompt:'(cfg-translation-rule)#'},prof:{roots:profRoots,prompt:'(cfg-translation-profile)#'},vp:{roots:vpRoots,prompt:'(config-voiceport)#'},dp:{roots:dpRoots,prompt:'(config-dial-peer)#'}}
 });
 const {print,mark,withCommon,enterConfig,toPriv,logout,enterDP,doSave,save,copyRun,setLed}=T;
@@ -775,6 +781,53 @@ const TASKS=[
   {id:'test',t:'用 test voice translation-rule 驗證號碼',h:()=>'特權模式 <code>test voice translation-rule 50 6612001</code>，在設定模式要在前面加 <code>do</code>。'},
   {id:'save',t:'存檔',h:()=>'<code>write memory</code> 或 <code>copy running-config startup-config</code>。'}
 ];
+/* 分三層的提示：a 方向、b 用哪個指令、c 完整指令。見 cli-core.js 的 createTerminal 說明 */
+const failOf=r=>(r.st.filter(([k])=>k==='x').pop()||['',''])[1];
+const atCtl=()=>({mode:'ctl',enter:'controller '+S.hw.toUpperCase()+' 0/1/0',at:c=>c&&c.name==='0/1/0'});
+const atSer=()=>({mode:'if',enter:'interface Serial'+dchan(),at:c=>c&&c.name===dchan()});
+const atDp=(tag,type)=>({mode:'dp',enter:`dial-peer voice ${tag} ${type}`,at:c=>c&&c.tag===tag});
+const needPri=()=>({where:atCtl(),a:'show isdn status 看不到 D 通道，表示 controller 還沒有 pri-group。',b:'到 controller 底下設定 pri-group timeslots，D 通道（Serial 介面）會自動產生。',c:[`pri-group timeslots ${S.hw==='e1'?'1-31':'1-24'}`]});
+const HINTS={
+  conf:()=>({where:{mode:'config'},a:'要先進入設定模式，才能修改路由器的設定。',b:'enable 進入特權模式（提示字元變成 #），再用 configure terminal 進入設定模式。',c:['enable','configure terminal（可以縮寫成 conf t）']}),
+  l1:()=>{
+    if(C.line!==S.hw){
+      if(S.cfg.cardType===C.line) return {where:{mode:'priv'},a:`介面卡類型已經改成 ${C.line.toUpperCase()}，但還沒生效。`,b:'card type 要存檔後 reload 才會生效。',c:['write memory','reload']};
+      return {where:{mode:'config'},a:`電信端的線路是 ${C.line.toUpperCase()}，介面卡卻是 ${S.hw.toUpperCase()}，類型不同線路不會起來。`,b:'用 card type 換介面卡類型，要先刪掉原本的設定，存檔再 reload 才會生效。',c:[`no card type ${S.hw} 0 1`,`card type ${C.line} 0 1`,'end','write memory','reload']};
+    }
+    const L=l1(), T1=S.hw==='t1';
+    if(!L.up) return {where:atCtl(),a:`controller 有告警，線路沒起來。先用 show controllers ${S.hw} 0/1/0 看是什麼告警。`,b:'告警是 loss of frame 或 loss of multiframe，通常是 framing 跟電信端不一致。到 controller 底下改 framing，打 framing ? 看有哪些選項。',
+      c:C.hidden&&!T1?['電信端參數目前隱藏。framing 只有 crc4 和 no-crc4 兩種，兩種都試試看，每改一次就用 do show controllers e1 0/1/0 看告警有沒有消失。']:[`framing ${T1?C.t1framing:C.e1framing}`]};
+    if(L.warns.includes('linecode')) return {where:atCtl(),a:'線路起來了，但 show controllers 看到很多 Line Code Violations。',b:'linecode 跟電信端不一致，到 controller 底下改 linecode。',c:[`linecode ${T1?C.t1linecode:'hdb3'}`]};
+    return {where:atCtl(),a:'線路起來了，但 show controllers 看到 Slip Secs，表示時脈不同步。',b:'時脈要從電信端取，到 controller 底下改 clock source。',c:['clock source line primary']};
+  },
+  l2:()=>{
+    const iz=isdnState();
+    if(!iz.exists) return needPri();
+    if(iz.ser.shut) return {where:atSer(),a:`D 通道介面 Serial${dchan()} 被 shutdown 了。`,b:'到 Serial 介面底下取消 shutdown。',c:['no shutdown']};
+    return {where:atCtl(),a:'ISDN Layer 2 要等 Layer 1 起來。先讓 controller 沒有告警。',b:`用 show controllers ${S.hw} 0/1/0 看告警。`};
+  },
+  sw:()=>isdnState().exists?{where:atSer(),a:'D 通道的 ISDN switch-type 要跟電信端一致。show isdn status 可以看到介面目前用哪一種。',b:`到 interface Serial${dchan()} 底下設定 isdn switch-type，介面上的設定會蓋過全域設定。電信端用哪一種寫在右側「電信端」分頁。`,c:[`isdn switch-type ${C.sw}`]}:needPri(),
+  in:()=>isdnState().exists?{where:atSer(),a:'電話打進來時，Serial 介面預設不一定會當成語音，可能被當成數據通話。',b:'到 Serial 介面底下設定 isdn incoming-voice，讓來電走語音流程。',c:['isdn incoming-voice voice']}:needPri(),
+  did:()=>{
+    const vp=S.cfg.voicePorts[dchan()];
+    if(!vp||vp.incoming!=='PRI') return {where:{mode:'vp',enter:'voice-port '+dchan(),at:c=>c&&c.name===dchan()},a:'外線打進來的號碼，要先經過 voice-port 上的 translation-profile 轉換。',b:`voice-port ${dchan()} 要套用 incoming 方向的 translation-profile PRI。`,c:['translation-profile incoming PRI']};
+    const i=Math.max(0,DIDS.findIndex((_,k)=>{ const r=simIn(k); return !(r.ok&&r.ext===TARGETS[k]); }));
+    const r=simIn(i), why=failOf(r)||`響到 ${r.ext}，不是內線 ${TARGETS[i]}`;
+    const pre=d=>C.digits==='9'?'07'+d:C.digits==='4'?d.slice(-4):d;
+    const rules=DIDS.map((d,k)=>`rule ${k+2} /^${pre(d)}$/ /${TARGETS[k]}/`);
+    return {where:{mode:'rule',enter:'voice translation-rule 50',at:c=>c&&c.id==='50'},
+      a:'電信端送來的 DID 號碼，要用 translation-rule 轉成對應的內線號碼。可以到右側「模擬通話」撥一通，看卡在哪一步。',
+      b:`在 voice translation-rule 50 裡，每個 DID 加一條 rule。電信端送幾碼，可以開 debug isdn q931 再模擬撥入，看 Called Party Number。目前 07-${DIDS[i]} 失敗：${why}`,
+      c:C.hidden?['電信端送幾碼目前隱藏，先用 debug isdn q931 確認。下面以送 7 碼為例：',...DIDS.map((d,k)=>`rule ${k+2} /^${d}$/ /${TARGETS[k]}/`)]:rules};
+  },
+  local:()=>{ const r=simOut('654321','077654321'); return {where:atDp('7','pots'),a:'內線撥 07-7654321，路由器要有 dial-peer 把它從 PRI 送出去，而且只送 7 碼。到「模擬通話」撥一通看看。',b:`建立一個 POTS dial-peer，設定 destination-pattern、port、forward-digits。目前撥這個號碼的結果：${r.ok?'送出 '+r.sent:failOf(r)}`,c:['destination-pattern 07[2-9]......','port '+dchan(),'forward-digits 7']}; },
+  ld:()=>{ const r=simOut('654321','0223456789'); return {where:atDp('8','pots'),a:'內線撥 02-2345-6789，路由器要有 dial-peer 把它從 PRI 送出去，而且要送完整號碼。',b:`建立一個 POTS dial-peer，destination-pattern 要涵蓋外縣市區碼，forward-digits 要送全部。目前撥這個號碼的結果：${r.ok?'送出 '+r.sent:failOf(r)}`,c:['destination-pattern 0[2-8]T','port '+dchan(),'forward-digits all']}; },
+  dp518:()=>({where:{mode:'config'},a:'dial-peer 518 沒有設定 port，是沒有用的設定。show dial-peer voice summary 可以看到它的 OPER 是 down。',b:'在設定模式，用 no 加上建立 dial-peer 的指令把它刪掉。',c:['no dial-peer voice 518 pots']}),
+  test:()=>({where:{mode:'priv'},a:'translation-rule 改好後，可以不打電話，直接測試號碼會被轉成什麼。',b:'用 test voice translation-rule，後面接規則編號和要測的號碼。在設定模式要在前面加 do。',c:['test voice translation-rule 50 6612001']}),
+  save:()=>({where:{mode:'priv'},a:'設定還沒存檔，重開機就會不見。',b:'在特權模式把 running-config 存到 startup-config。',c:['write memory（或 copy running-config startup-config）']})
+};
+TASKS.forEach(t=>{ t.g=HINTS[t.id]; });
+
 function evalTasks(){
   const iz=isdnState(), L1=l1();
   const loc=simOut('654321','077654321'), ld=simOut('654321','0223456789');
@@ -834,6 +887,7 @@ $('#btnReset').addEventListener('click',()=>{ freshState(); freshCarrier(); sync
 function welcome(){
   print('LAB-RTR-A 模擬器：中華電信 PRI 介接練習','dim');
   print('Tab 補齊指令或列出選項，? 查看可用參數，↑↓ 叫出歷史指令，Ctrl+Z 回到特權模式。','dim');
+  print('卡住時按下方的「提示」或輸入 hint，每多按一次會說得更具體。','hint');
   print('先輸入 enable 開始。這是簡化的模擬，告警與 debug 輸出僅供練習參考。\n','dim');
 }
 welcome(); syncCarrierUI(); refresh();
