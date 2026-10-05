@@ -7,6 +7,7 @@
 | `index.html` | 首頁，連到兩個練習器 |
 | `pri-cli-lab.html` | 中華電信 E1/T1 PRI 介接（LAB-RTR-A） |
 | `fit50-cas-lab.html` | CN 與 FIT-50 介接，T1 CAS（LAB-RTR-B） |
+| `cli-core.js` | 兩個練習器共用的 CLI 引擎：指令解析、Tab / ? 補齊、pipe、歷史指令、dial-peer 比對、任務清單 |
 
 ## 使用方式
 

@@ -222,12 +222,11 @@ input.t{font-family:var(--mono)}
   </main>
 </div>
 
+<script src="cli-core.js"></script>
 <script>
 (function(){
 'use strict';
-const $=s=>document.querySelector(s);
-const out=$('#out'), inp=$('#cmd'), promptEl=$('#prompt'), screen=$('#screen');
-const clone=o=>JSON.parse(JSON.stringify(o));
+const {$,clone,ts,K,NUM,WORD,LINE,isIp,isDial,sortK,forward,fwdDesc}=CliCore;
 
 const DIDS=['6612001','6612002','6612003','6612004','6612005'];
 const TARGETS=['654321','654322','654323','654324','654325'];
@@ -266,86 +265,20 @@ function freshState(){
 }
 function freshCarrier(){ C={line:'e1', e1framing:'crc4', t1framing:'esf', t1linecode:'b8zs', sw:'primary-net5', digits:'7', hidden:false}; }
 freshState(); freshCarrier();
-const mark=()=>{S.dirty=true;};
 const dchan=()=>'0/1/0:'+(S.hw==='e1'?'15':'23');
 
-/* ---------- output ---------- */
-function print(text,cls){
-  String(text).split('\n').forEach(l=>{
-    const d=document.createElement('div');
-    let c=cls; if(!c && /^% /.test(l)) c='err';
-    if(c) d.className=c; d.textContent=l; out.appendChild(d);
-  });
-  while(out.childNodes.length>2500) out.removeChild(out.firstChild);
-}
-function scrollDown(){ screen.scrollTop=screen.scrollHeight; }
-function flash(){ screen.classList.remove('flash'); void screen.offsetWidth; screen.classList.add('flash'); }
-function ts(){
-  const d=new Date(), M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
-  const p=(n,l=2)=>String(n).padStart(l,'0');
-  return `*${M} ${String(d.getDate()).padStart(2,' ')} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(),3)}:`;
-}
-
-/* ---------- grammar helpers ---------- */
-const K=(k,h,c,run,o)=>Object.assign({t:'k',k,h,c:c||[],run},o||{});
-const NUM=(min,max,h,c,run,o)=>Object.assign({t:'p',type:'num',min,max,label:`<${min}-${max}>`,h,c:c||[],run},o||{});
-const WORD=(label,h,c,run,v,o)=>Object.assign({t:'p',type:'word',label,h,c:c||[],run,v},o||{});
-const LINE=(h,run)=>({t:'p',type:'line',label:'LINE',h,c:[],run});
-const kids=n=>typeof n.c==='function'?n.c():(n.c||[]);
-const isIp=t=>/^\d{1,3}(\.\d{1,3}){3}$/.test(t);
 const isPat=t=>/^\/.*\/$/.test(t)&&t.length>=2;
-const isDial=t=>/^[0-9.\[\]\-T*#+%?,]+$/i.test(t);
-const sortK=l=>l.sort((a,b)=>(a.k||a.label).localeCompare(b.k||b.label));
+const fix=s=>s.replace(/^(\s*(?:do\s+)?(?:no\s+)?int[a-z]*\s+)(se[a-z]*)(\d)/i,'$1$2 $3');
 
-function accepts(p,tok){
-  if(p.type==='num') return /^\d+$/.test(tok)&&+tok>=p.min&&+tok<=p.max;
-  if(p.type==='line') return true;
-  return p.v?p.v(tok):true;
-}
-function matchTok(children,tok){
-  const low=tok.toLowerCase();
-  const kws=children.filter(n=>n.t==='k'&&n.k.toLowerCase().startsWith(low));
-  const ex=kws.find(n=>n.k.toLowerCase()===low);
-  if(ex) return {node:ex};
-  const ps=children.filter(n=>n.t==='p'&&accepts(n,tok));
-  if(kws.length===1) return {node:kws[0]};
-  if(kws.length>1) return {amb:true};
-  if(ps.length) return {node:ps[0]};
-  return {bad:true};
-}
-function walk(tokens,roots){
-  let children=roots,node=null; const vals=[];
-  for(let i=0;i<tokens.length;i++){
-    const m=matchTok(children,tokens[i]);
-    if(m.amb) return {err:'amb',i};
-    if(m.bad) return {err:'bad',i};
-    node=m.node;
-    if(node.t==='p'&&node.type==='line'){ vals.push(tokens.slice(i).join(' ')); return {node,vals,done:true}; }
-    vals.push(node.t==='k'?node.k:tokens[i]);
-    children=kids(node);
-  }
-  return {node,vals};
-}
-const fix=s=>s.replace(/(^|\s)(se[a-z]*)(\d)/ig,'$1$2 $3');
+const T=CliCore.createTerminal({
+  state:()=>S, refresh:()=>refresh(), fix,
+  modes:{exec:{roots:execRoots,prompt:'>'},priv:{roots:privRoots,prompt:'#'},config:{roots:configRoots,prompt:'(config)#'},ctl:{roots:ctlRoots,prompt:'(config-controller)#'},if:{roots:ifRoots,prompt:'(config-if)#'},rule:{roots:ruleRoots,prompt:'(cfg-translation-rule)#'},prof:{roots:profRoots,prompt:'(cfg-translation-profile)#'},vp:{roots:vpRoots,prompt:'(config-voiceport)#'},dp:{roots:dpRoots,prompt:'(config-dial-peer)#'}}
+});
+const {print,mark,withCommon,enterConfig,toPriv,logout,enterDP,doSave,save,copyRun,setLed}=T;
+const operational=d=>CliCore.operational(S.cfg,d);
+const bestPeer=num=>CliCore.bestPeer(S.cfg,num);
 
 /* ---------- mode trees ---------- */
-function commonCfg(){ return [
-  K('do','To run exec commands in config mode',()=>privRoots()),
-  K('end','Exit from configure mode',null,()=>toPriv()),
-  K('exit','Exit from current mode',null,()=>exitMode())
-];}
-function withCommon(list){
-  return sortK(list.concat(commonCfg(),[K('no','Negate a command or set its defaults',()=>list)]));
-}
-function modeRoots(m){
-  return ({exec:execRoots,priv:privRoots,config:configRoots,ctl:ctlRoots,if:ifRoots,rule:ruleRoots,prof:profRoots,vp:vpRoots,dp:dpRoots})[m]();
-}
-const isSub=m=>['ctl','if','rule','prof','vp','dp'].includes(m);
-function promptStr(){
-  if(S.pending) return S.pending.prompt;
-  return S.cfg.hostname+({exec:'>',priv:'#',config:'(config)#',ctl:'(config-controller)#',if:'(config-if)#',rule:'(cfg-translation-rule)#',prof:'(cfg-translation-profile)#',vp:'(config-voiceport)#',dp:'(config-dial-peer)#'})[S.mode];
-}
-
 function showRoots(priv){
   const units=()=>['0/1/0','0/1/1','0/1/2','0/1/3'];
   const l=[
@@ -484,52 +417,27 @@ function dpRoots(){
   const dp=()=>S.cfg.dialPeers.find(d=>d.tag===S.ctx.tag);
   const del=k=>(v,x)=>{ delete dp()[k]; mark(); };
   const prof=k=>(v,x)=>{ if(x.neg) delete dp()[k]; else dp()[k]=v[2]; mark(); };
+  const n=T.dialPeerNodes(dp,'07[2-9]......');
   const l=[
-    K('description','A string describing this dial-peer',[LINE('Up to 64 characters',(v,x)=>{ if(x.neg) delete dp().desc; else dp().desc=v[1]; mark(); })],del('desc'),{nOnly:true}),
-    K('destination-pattern','A full E.164 telephone number prefix',[WORD('WORD','A dial-peer destination pattern, e.g. 07[2-9]......',null,(v,x)=>{ if(x.neg) delete dp().dest; else dp().dest=v[1]; mark(); },isDial)],del('dest'),{nOnly:true}),
+    n.description,
+    n.destination,
     K('incoming','The number to match on incoming calls',[K('called-number','Called number to match on incoming calls',[WORD('WORD','A called number pattern',null,(v,x)=>{ if(x.neg) delete dp().incoming; else dp().incoming=v[2]; mark(); },isDial)],del('incoming'),{nOnly:true})]),
     K('translation-profile','Translation profile',[
       K('incoming','Translation profile for incoming call',[WORD('WORD','Translation profile name',null,prof('profIn'),null,{sug:()=>Object.keys(S.cfg.profiles)})],del('profIn'),{nOnly:true}),
       K('outgoing','Translation profile for outgoing call',[WORD('WORD','Translation profile name',null,prof('profOut'),null,{sug:()=>Object.keys(S.cfg.profiles)})],del('profOut'),{nOnly:true})
     ])
   ];
-  if(dp().type==='pots'){
-    l.push(
-      K('forward-digits','Number of digits to be forwarded',[K('all','Forward all digits',null,(v,x)=>{ if(x.neg) delete dp().fwd; else dp().fwd='all'; mark(); }),NUM(0,32,'Number of digits to forward',null,(v,x)=>{ if(x.neg) delete dp().fwd; else dp().fwd=v[1]; mark(); })],del('fwd'),{nOnly:true}),
-      K('port','Voice port',[WORD('<slot/subunit/port>','Voice port',null,(v,x)=>{ if(x.neg) delete dp().port; else dp().port=v[1]; mark(); },t=>!!S.cfg.voicePorts[t],{sug:()=>Object.keys(S.cfg.voicePorts)})],del('port'),{nOnly:true})
-    );
-  } else {
-    l.push(K('session','Specify session parameters',[
-      K('protocol','The session protocol to be used',[K('sipv2','IETF Session Initiation Protocol',null,(v,x)=>{ if(x.neg) delete dp().proto; else dp().proto='sipv2'; mark(); })],del('proto'),{nOnly:true}),
-      K('target','Specify session target',[WORD('WORD','ipv4:A.B.C.D',null,(v,x)=>{ if(x.neg) delete dp().target; else dp().target=v[2]; mark(); },t=>/^ipv4:\d{1,3}(\.\d{1,3}){3}$/.test(t))],del('target'),{nOnly:true}),
-      K('transport','Set the session transport',[K('tcp','TCP transport',null,(v,x)=>{dp().transport='tcp'; mark();}),K('udp','UDP transport',null,(v,x)=>{dp().transport='udp'; mark();})])
-    ]));
-  }
+  if(dp().type==='pots') l.push(n.forwardDigits,n.port);
+  else l.push(n.session);
   return withCommon(l);
 }
-function pipeRoots(){ return [
-  K('begin','Begin with the line that matches',[LINE('Regular Expression',null)]),
-  K('include','Include lines that match',[LINE('Regular Expression',null)]),
-  K('section','Filter a section of output',[LINE('Regular Expression',null)])
-];}
 
 /* ---------- mode actions ---------- */
-function enterConfig(){ S.mode='config'; S.ctx=null; S.flags.conf=true; return 'Enter configuration commands, one per line.  End with CNTL/Z.'; }
-function toPriv(){ S.mode='priv'; S.ctx=null; return ts()+' %SYS-5-CONFIG_I: Configured from console by console'; }
-function exitMode(){ if(S.mode==='config') return toPriv(); S.mode='config'; S.ctx=null; }
-function logout(){ S.mode='exec'; S.ctx=null; return `\n${S.cfg.hostname} con0 is now available\n\nPress RETURN to get started.`; }
 function enterCtl(name){ S.mode='ctl'; S.ctx={type:S.hw,name}; }
 function enterIf(name,x){ if(x.neg) return '% Removal of channelized serial interfaces is not supported; use "no pri-group" on the controller'; S.mode='if'; S.ctx={name}; }
 function enterRule(id,x){ if(x.neg){ delete S.cfg.rules[id]; mark(); return; } if(!S.cfg.rules[id]){ S.cfg.rules[id]={}; mark(); } S.mode='rule'; S.ctx={id}; }
 function enterProf(name,x){ if(x.neg){ delete S.cfg.profiles[name]; mark(); return; } if(!S.cfg.profiles[name]){ S.cfg.profiles[name]={}; mark(); } S.mode='prof'; S.ctx={name}; }
 function enterVP(name,x){ if(x.neg) return '% Voice ports cannot be removed'; S.mode='vp'; S.ctx={name}; }
-function enterDP(tag,type,x){
-  const ex=S.cfg.dialPeers.find(d=>d.tag===tag);
-  if(x.neg){ if(!ex) return `% Dial-peer ${tag} does not exist`; S.cfg.dialPeers=S.cfg.dialPeers.filter(d=>d.tag!==tag); mark(); return; }
-  if(ex&&ex.type!==type) return `% Dial-peer ${tag} already exists as type ${ex.type}`;
-  if(!ex){ S.cfg.dialPeers.push({tag,type}); mark(); }
-  S.mode='dp'; S.ctx={tag};
-}
 function setCard(v,x){
   const t=v[2], slot=v[3], bay=v[4];
   if(slot!=='0'||bay!=='1') return `% No module present in slot ${slot}/${bay}`;
@@ -555,14 +463,6 @@ function removePri(){
   if(!c.pri) return; c.pri=null;
   const dn=ctl+':'+(t==='e1'?'15':'23');
   delete S.cfg.serials[dn]; delete S.cfg.voicePorts[dn]; mark();
-}
-function doSave(){ S.startup=clone(S.cfg); S.dirty=false; S.flags.saved=true; }
-function save(){ doSave(); return 'Building configuration...\n[OK]'; }
-function copyRun(){
-  S.pending={prompt:'Destination filename [startup-config]? ',handler:a=>{
-    const t=a.trim(); if(t===''||t==='startup-config'){ doSave(); print('Building configuration...\n[OK]'); }
-    else print('% The simulator only supports startup-config');
-  }};
 }
 function reloadCmd(){
   const proceed=()=>{ S.pending={prompt:'Proceed with reload? [confirm]',handler:a=>{ const t=a.trim(); if(t===''||/^y/i.test(t)) doReload(); }}; };
@@ -612,41 +512,6 @@ function applyRules(id,num){
     if(re.test(num)) return {rule:k,out:num.replace(re,ciscoRepl(r.r)),m:r.m,r:r.r};
   }
   return {rule:null,out:num};
-}
-function patInfo(p){
-  let r='^',score=0;
-  for(let i=0;i<p.length;i++){
-    const ch=p[i];
-    if(/[0-9*#]/.test(ch)){ r+=ch==='*'?'\\*':ch; score+=10; }
-    else if(ch==='.'){ r+='\\d'; score+=1; }
-    else if(ch==='['){ const j=p.indexOf(']',i); if(j<0) return null; r+=p.slice(i,j+1); score+=5; i=j; }
-    else if(ch==='T'||ch==='t'){ r+='\\d*'; }
-    else if(ch==='+'){ r+='+'; }
-    else if(ch===','){ }
-    else return null;
-  }
-  try{ return {re:new RegExp(r+'$'),score}; }catch(e){ return null; }
-}
-const operational=d=>!!d.dest&&(d.type==='voip'?!!d.target:(!!d.port&&!!S.cfg.voicePorts[d.port]));
-function bestPeer(num){
-  let best=null;
-  for(const d of S.cfg.dialPeers){
-    if(!operational(d)) continue;
-    const pi=patInfo(d.dest); if(!pi||!pi.re.test(num)) continue;
-    if(!best||pi.score>best.score) best={d,score:pi.score};
-  }
-  return best&&best.d;
-}
-function forward(d,num){
-  if(d.fwd==='all') return num;
-  if(d.fwd!=null) return num.slice(-Number(d.fwd)||num.length) ;
-  const lit=(d.dest.match(/^\d+/)||[''])[0].length; return num.slice(lit);
-}
-function fwdDesc(d){
-  if(d.fwd==='all') return 'forward-digits all，送完整號碼';
-  if(d.fwd!=null) return `forward-digits ${d.fwd}，只送最後 ${d.fwd} 碼`;
-  const lit=(d.dest.match(/^\d+/)||[''])[0];
-  return lit?`沒有設定 forward-digits，預設去掉明確比對的前置碼 ${lit}`:'沒有設定 forward-digits';
 }
 
 /* ---------- line status ---------- */
@@ -772,8 +637,8 @@ function showIsdn(){
   return s;
 }
 function showRule(v){
-  const ids=v[2]?[v[2]]:Object.keys(S.cfg.rules).sort((a,b)=>a-b);
-  if(v[2]&&!S.cfg.rules[v[2]]) return `% Translation rule ${v[2]} does not exist`;
+  const ids=v[3]?[v[3]]:Object.keys(S.cfg.rules).sort((a,b)=>a-b);
+  if(v[3]&&!S.cfg.rules[v[3]]) return `% Translation rule ${v[3]} does not exist`;
   return ids.map(id=>{
     const L=[`Translation-rule tag: ${id}`];
     Object.keys(S.cfg.rules[id]).sort((a,b)=>a-b).forEach(n=>{
@@ -783,13 +648,7 @@ function showRule(v){
     return L.join('\n');
   }).join('\n\n');
 }
-function showDP(){
-  const L=['TAG        TYPE  OPER  DEST-PATTERN          FWD   SESS-TARGET              PORT'];
-  S.cfg.dialPeers.forEach(d=>{
-    L.push(d.tag.padEnd(11)+d.type.padEnd(6)+(operational(d)?'up':'down').padEnd(6)+(d.dest||'').padEnd(22)+(d.type==='pots'?(d.fwd==null?'def':d.fwd):'').padEnd(6)+(d.target||'').padEnd(25)+(d.port||''));
-  });
-  return L.join('\n');
-}
+function showDP(){ return T.showDP(22); }
 function showDebug(){
   const L=[];
   if(S.debug.q931) L.push('ISDN:','  ISDN Q931 packets debugging is on');
@@ -933,25 +792,10 @@ function evalTasks(){
     save:S.flags.saved&&!S.dirty
   };
 }
-const openHints=new Set();
-function renderTasks(){
-  const r=evalTasks(); let n=0;
-  const ol=$('#tasks'); ol.innerHTML='';
-  TASKS.forEach(t=>{
-    const done=!!r[t.id]; if(done) n++;
-    const li=document.createElement('li'); if(done) li.className='done';
-    li.innerHTML=`<span class="box" aria-hidden="true"></span><span class="tt">${t.t}${done?'<span class="sr" style="position:absolute;left:-9999px">（完成）</span>':''}</span><details ${openHints.has(t.id)?'open':''}><summary>提示</summary><div>${t.h()}</div></details>`;
-    li.querySelector('details').addEventListener('toggle',e=>{ e.target.open?openHints.add(t.id):openHints.delete(t.id); });
-    ol.appendChild(li);
-  });
-  $('#prog').textContent=`${n}/${TASKS.length}`;
-  $('#meter').style.width=(n/TASKS.length*100)+'%';
-}
 
 /* ---------- refresh ---------- */
-function setLed(id,s){ const e=$('#'+id); e.className='led'+(s?' '+s:''); }
 function refresh(){
-  promptEl.textContent=promptStr();
+  $('#prompt').textContent=T.promptStr();
   const L1=l1(), iz=isdnState();
   setLed('ledL1',L1.up?(L1.warns.length?'warn':'on'):'bad');
   $('#lblL1').textContent=S.hw.toUpperCase()+' 0/1/0';
@@ -959,169 +803,13 @@ function refresh(){
   setLed('ledSave',S.dirty?'warn':'');
   $('#lblSave').textContent=S.dirty?'未存檔':'已存檔';
   $('#pend').textContent=(S.cfg.cardType&&S.cfg.cardType!==S.hw)?`card type ${S.cfg.cardType.toUpperCase()} 待 reload`:'';
-  renderTasks();
+  T.renderTasks(TASKS,evalTasks());
 }
-
-/* ---------- input handling ---------- */
-function analyze(raw){
-  let str=raw, roots=modeRoots(S.mode);
-  const pi=str.indexOf('|'); if(pi>=0){ roots=pipeRoots(); str=str.slice(pi+1); }
-  const endsSpace=str.length===0||/\s$/.test(str);
-  const toks=str.trim().split(/\s+/).filter(Boolean);
-  const partial=endsSpace?'':toks.pop();
-  const r=walk(toks,roots);
-  if(r.err) return {err:r.err,i:r.i};
-  if(r.done) return {done:true,children:[],partial:'',runnable:true};
-  const vals=r.vals||[];
-  const neg=vals[0]==='no'||(vals[0]==='do'&&vals[1]==='no');
-  const children=r.node?kids(r.node):roots;
-  const runnable=r.node?(!!r.node.run&&(!r.node.nOnly||neg)):false;
-  return {children,partial,runnable};
-}
-function cands(children,partial){
-  const low=partial.toLowerCase(), set=[];
-  children.forEach(n=>{
-    if(n.t==='k'&&n.k.toLowerCase().startsWith(low)) set.push(n.k);
-    if(n.t==='p'&&n.sug) n.sug().forEach(s=>{ if(s.toLowerCase().startsWith(low)&&!set.includes(s)) set.push(s); });
-  });
-  return set;
-}
-function helpList(children,runnable){
-  const items=children.map(n=>[n.t==='k'?n.k:n.label,n.h||'']);
-  if(runnable) items.push(['<cr>','']);
-  const w=Math.max(4,...items.map(i=>i[0].length));
-  return items.map(([a,b])=>'  '+a.padEnd(w+2)+b).join('\n');
-}
-function caret(raw,idx){
-  const m=[...raw.matchAll(/\S+/g)][idx];
-  print(' '.repeat(promptStr().length+(m?m.index:raw.length))+'^','err');
-  print("% Invalid input detected at '^' marker.");
-}
-function doHelp(){
-  if(S.pending) return;
-  const raw=fix(inp.value);
-  print(promptStr()+raw+'?');
-  const a=analyze(raw);
-  if(a.err==='amb') print(`% Ambiguous command:  "${raw.trim()}"`);
-  else if(a.err) caret(raw,a.i);
-  else if(a.partial){ const c=cands(a.children,a.partial); print(c.length?c.join('  '):'% Unrecognized command'); }
-  else if(!a.children.length&&!a.runnable) print('% Unrecognized command');
-  else print(helpList(a.children,a.runnable));
-  inp.value=raw; scrollDown();
-}
-function doTab(){
-  if(S.pending) return;
-  const raw=fix(inp.value), a=analyze(raw);
-  if(a.err||a.done){ flash(); return; }
-  if(!a.partial){
-    if(!a.children.length){ flash(); return; }
-    print(promptStr()+raw); print(helpList(a.children,a.runnable)); scrollDown(); return;
-  }
-  const c=cands(a.children,a.partial), base=raw.slice(0,raw.length-a.partial.length);
-  if(c.length===1) inp.value=base+c[0]+' ';
-  else if(c.length>1){
-    let cp=c[0];
-    c.forEach(x=>{ let i=0; while(i<cp.length&&i<x.length&&cp[i].toLowerCase()===x[i].toLowerCase()) i++; cp=cp.slice(0,i); });
-    if(cp.length>a.partial.length) inp.value=base+cp;
-    else { print(promptStr()+raw); print(c.join('  ')); scrollDown(); }
-  } else flash();
-  const L=inp.value.length; inp.setSelectionRange(L,L);
-}
-function applyPipe(text,pipe){
-  const [kw,...rest]=pipe.trim().split(/\s+/), pat=rest.join(' ');
-  const k=['begin','include','section'].find(w=>kw&&w.startsWith(kw.toLowerCase()));
-  if(!k||!pat) return '% Incomplete or invalid filter after |';
-  let re; try{ re=new RegExp(pat); }catch(e){ return '% Invalid regular expression'; }
-  const lines=text.split('\n');
-  if(k==='include') return lines.filter(l=>re.test(l)).join('\n');
-  if(k==='begin'){ const i=lines.findIndex(l=>re.test(l)); return i<0?'':lines.slice(i).join('\n'); }
-  const o=[]; let on=false;
-  lines.forEach(l=>{ if(!/^\s/.test(l)) on=re.test(l); if(on) o.push(l); });
-  return o.join('\n');
-}
-function execute(rawIn){
-  const raw=fix(rawIn); let line=raw.trim(); if(!line) return;
-  let pipe=null; const pi=line.indexOf('|');
-  if(pi>=0){ pipe=line.slice(pi+1); line=line.slice(0,pi).trim(); }
-  const toks=line.split(/\s+/);
-  let r=walk(toks,modeRoots(S.mode));
-  if(r.err&&isSub(S.mode)){
-    const r2=walk(toks,configRoots());
-    if(!r2.err&&r2.node&&r2.node.run){ S.mode='config'; S.ctx=null; r=r2; }
-  }
-  if(r.err==='amb'){ print(`% Ambiguous command:  "${line}"`); return; }
-  if(r.err){ caret(raw,r.i); return; }
-  let vals=r.vals, neg=false;
-  if(vals[0]==='do') vals=vals.slice(1);
-  if(vals[0]==='no'){ neg=true; vals=vals.slice(1); }
-  const node=r.node;
-  if(!node.run||(node.nOnly&&!neg)){ print('% Incomplete command.'); return; }
-  const res=node.run(vals,{neg});
-  if(typeof res==='string'&&res.length) print(pipe?applyPipe(res,pipe):res);
-}
-function submit(){
-  const v=inp.value; inp.value='';
-  if(S.pending){ const p=S.pending; S.pending=null; print(p.prompt+v); p.handler(v); }
-  else {
-    print(promptStr()+v);
-    if(v.trim()){ S.history.push(v); if(S.history.length>200) S.history.shift(); }
-    S.hidx=S.history.length;
-    execute(v);
-  }
-  refresh(); scrollDown();
-}
-function hist(dir){
-  if(!S.history.length) return;
-  S.hidx=Math.max(0,Math.min(S.history.length,S.hidx+dir));
-  inp.value=S.history[S.hidx]||'';
-  const L=inp.value.length; inp.setSelectionRange(L,L);
-}
-function ctrlZ(){
-  if(S.pending) return;
-  print(promptStr()+inp.value+'^Z'); inp.value='';
-  if(S.mode!=='exec'&&S.mode!=='priv') print(toPriv(),'log');
-  refresh(); scrollDown();
-}
-inp.addEventListener('keydown',e=>{
-  if(e.isComposing) return;
-  if(e.key==='Tab'){ e.preventDefault(); doTab(); }
-  else if(e.key==='?'){ e.preventDefault(); doHelp(); }
-  else if(e.key==='Enter'){ e.preventDefault(); submit(); }
-  else if(e.key==='ArrowUp'){ e.preventDefault(); hist(-1); }
-  else if(e.key==='ArrowDown'){ e.preventDefault(); hist(1); }
-  else if(e.ctrlKey&&(e.key==='z'||e.key==='Z')){ e.preventDefault(); ctrlZ(); }
-  else if(e.ctrlKey&&(e.key==='c'||e.key==='C')&&!String(window.getSelection())){ e.preventDefault(); print(promptStr()+inp.value); inp.value=''; scrollDown(); }
-});
-inp.addEventListener('input',()=>{
-  const i=inp.value.indexOf('?');
-  if(i>=0){ inp.value=inp.value.slice(0,i); doHelp(); }
-});
-screen.addEventListener('click',()=>{ if(!String(window.getSelection())) inp.focus(); });
-document.querySelectorAll('.keys button').forEach(b=>{
-  b.addEventListener('pointerdown',e=>e.preventDefault());
-  b.addEventListener('click',()=>{
-    const k=b.dataset.k;
-    if(k==='tab') doTab(); else if(k==='?') doHelp(); else if(k==='up') hist(-1); else if(k==='down') hist(1); else if(k==='z') ctrlZ(); else submit();
-    inp.focus();
-  });
-});
 
 /* ---------- side panel ---------- */
-document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
-  document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b?'true':'false'));
-  ['tasks','call','carrier'].forEach(id=>$('#tab-'+id).hidden=id!==b.dataset.tab);
-}));
 $('#inDid').innerHTML=DIDS.map((d,i)=>`<option value="${i}">07-${d}</option>`).join('');
 $('#didList').innerHTML=DIDS.map((d,i)=>`<li>07-${d} → 內線 ${TARGETS[i]}</li>`).join('');
-function renderTrace(title,r){
-  const t=$('#trace'); t.innerHTML='';
-  const p=document.createElement('p'); p.className='tt '+(r.ok?'good':'bad'); p.textContent=`${title}：${r.ok?'成功':'失敗'}`; t.appendChild(p);
-  const ol=document.createElement('ol');
-  r.st.forEach(([k,m])=>{ const li=document.createElement('li'); li.className=k; li.textContent=m; ol.appendChild(li); });
-  t.appendChild(ol);
-  const lines=r.dbg.filter(([k])=>(k==='q'&&S.debug.q931)||(k==='t'&&S.debug.trans));
-  if(lines.length){ lines.forEach(([,l])=>print(l,'dbg')); scrollDown(); }
-}
+const renderTrace=(title,r)=>T.renderTrace(title,r,k=>(k==='q'&&S.debug.q931)||(k==='t'&&S.debug.trans));
 $('#btnIn').addEventListener('click',()=>{ const i=+$('#inDid').value; renderTrace(`外線撥 07-${DIDS[i]}`,simIn(i)); });
 $('#btnOut').addEventListener('click',()=>{ const e=$('#outExt').value.trim(), n=$('#outNum').value.trim(); renderTrace(`內線 ${e} 撥 ${n}`,simOut(e,n)); });
 document.querySelectorAll('.chips button').forEach(b=>b.addEventListener('click',()=>{ $('#outNum').value=b.dataset.n; }));
@@ -1141,7 +829,7 @@ $('#btnRandom').addEventListener('click',()=>{
   C.hidden=true; syncCarrierUI(); refresh();
 });
 $('#btnReveal').addEventListener('click',()=>{ C.hidden=false; syncCarrierUI(); refresh(); });
-$('#btnReset').addEventListener('click',()=>{ freshState(); freshCarrier(); syncCarrierUI(); out.innerHTML=''; $('#trace').innerHTML=''; welcome(); refresh(); inp.focus(); });
+$('#btnReset').addEventListener('click',()=>{ freshState(); freshCarrier(); syncCarrierUI(); T.clear(); welcome(); refresh(); T.focus(); });
 
 function welcome(){
   print('LAB-RTR-A 模擬器：中華電信 PRI 介接練習','dim');
@@ -1149,7 +837,7 @@ function welcome(){
   print('先輸入 enable 開始。這是簡化的模擬，告警與 debug 輸出僅供練習參考。\n','dim');
 }
 welcome(); syncCarrierUI(); refresh();
-inp.focus({preventScroll:true});
+T.focus({preventScroll:true});
 })();
 </script>
 </body>

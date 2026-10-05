@@ -223,12 +223,11 @@ button.del{font:inherit;font-size:.8rem;padding:2px 8px;border:1px solid var(--l
     </aside>
   </main>
 </div>
+<script src="cli-core.js"></script>
 <script>
 (function(){
 'use strict';
-const $=s=>document.querySelector(s);
-const out=$('#out'), inp=$('#cmd'), promptEl=$('#prompt'), screen=$('#screen');
-const clone=o=>JSON.parse(JSON.stringify(o));
+const {$,clone,ts,K,NUM,WORD,LINE,isDial,sortK,forward,fwdDesc}=CliCore;
 const LOOP='172.16.5.2', XRI_IP='10.10.5.124';
 const FIT_USERS=['900000'], XRI_EXT=['360201','360202'];
 const UNITS=['0/1/0','0/1/1','0/1/2','0/1/3'];
@@ -248,70 +247,17 @@ function fresh(){
   SG={trunk:'',routes:[]};
 }
 fresh();
-const mark=()=>{S.dirty=true;};
 
-/* ---------- output ---------- */
-function print(text,cls){
-  String(text).split('\n').forEach(l=>{
-    const d=document.createElement('div'); let c=cls; if(!c&&/^% /.test(l)) c='err';
-    if(c) d.className=c; d.textContent=l; out.appendChild(d);
-  });
-  while(out.childNodes.length>2500) out.removeChild(out.firstChild);
-}
-const scrollDown=()=>{screen.scrollTop=screen.scrollHeight;};
-function flash(){screen.classList.remove('flash');void screen.offsetWidth;screen.classList.add('flash');}
-function ts(){
-  const d=new Date(),M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()],p=(n,l=2)=>String(n).padStart(l,'0');
-  return `*${M} ${String(d.getDate()).padStart(2,' ')} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(),3)}:`;
-}
+const T=CliCore.createTerminal({
+  state:()=>S, refresh:()=>refresh(),
+  modes:{exec:{roots:execRoots,prompt:'>'},priv:{roots:privRoots,prompt:'#'},config:{roots:configRoots,prompt:'(config)#'},ctl:{roots:ctlRoots,prompt:'(config-controller)#'},dp:{roots:dpRoots,prompt:'(config-dial-peer)#'}},
+  newDialPeer:(tag,type)=>type==='voip'?{tag,type,vad:true}:{tag,type}
+});
+const {print,mark,withCommon,enterConfig,toPriv,logout,enterDP,save,copyRun,setLed}=T;
+const operational=d=>CliCore.operational(S.cfg,d);
+const bestPeer=num=>CliCore.bestPeer(S.cfg,num);
 
-/* ---------- grammar ---------- */
-const K=(k,h,c,run,o)=>Object.assign({t:'k',k,h,c:c||[],run},o||{});
-const NUM=(min,max,h,c,run,o)=>Object.assign({t:'p',type:'num',min,max,label:`<${min}-${max}>`,h,c:c||[],run},o||{});
-const WORD=(label,h,c,run,v,o)=>Object.assign({t:'p',type:'word',label,h,c:c||[],run,v},o||{});
-const LINE=(h,run)=>({t:'p',type:'line',label:'LINE',h,c:[],run});
-const kids=n=>typeof n.c==='function'?n.c():(n.c||[]);
-const isDial=t=>/^[0-9.\[\]\-T*#+%?,]+$/i.test(t);
-const sortK=l=>l.sort((a,b)=>(a.k||a.label).localeCompare(b.k||b.label));
-function accepts(p,tok){
-  if(p.type==='num') return /^\d+$/.test(tok)&&+tok>=p.min&&+tok<=p.max;
-  if(p.type==='line') return true;
-  return p.v?p.v(tok):true;
-}
-function matchTok(children,tok){
-  const low=tok.toLowerCase();
-  const kws=children.filter(n=>n.t==='k'&&n.k.toLowerCase().startsWith(low));
-  const ex=kws.find(n=>n.k.toLowerCase()===low); if(ex) return {node:ex};
-  const ps=children.filter(n=>n.t==='p'&&accepts(n,tok));
-  if(kws.length===1) return {node:kws[0]};
-  if(kws.length>1) return {amb:true};
-  if(ps.length) return {node:ps[0]};
-  return {bad:true};
-}
-function walk(tokens,roots){
-  let children=roots,node=null; const vals=[];
-  for(let i=0;i<tokens.length;i++){
-    const m=matchTok(children,tokens[i]);
-    if(m.amb) return {err:'amb',i}; if(m.bad) return {err:'bad',i};
-    node=m.node;
-    if(node.t==='p'&&node.type==='line'){ vals.push(tokens.slice(i).join(' ')); return {node,vals,done:true}; }
-    vals.push(node.t==='k'?node.k:tokens[i]); children=kids(node);
-  }
-  return {node,vals};
-}
-
-function commonCfg(){ return [
-  K('do','To run exec commands in config mode',()=>privRoots()),
-  K('end','Exit from configure mode',null,()=>toPriv()),
-  K('exit','Exit from current mode',null,()=>exitMode())
-];}
-const withCommon=list=>sortK(list.concat(commonCfg(),[K('no','Negate a command or set its defaults',()=>list)]));
-const modeRoots=m=>({exec:execRoots,priv:privRoots,config:configRoots,ctl:ctlRoots,dp:dpRoots})[m]();
-const isSub=m=>m==='ctl'||m==='dp';
-function promptStr(){
-  if(S.pending) return S.pending.prompt;
-  return S.cfg.hostname+({exec:'>',priv:'#',config:'(config)#',ctl:'(config-controller)#',dp:'(config-dial-peer)#'})[S.mode];
-}
+/* ---------- mode trees ---------- */
 function showRoots(priv){
   const l=[
     K('controllers','Interface controller status',[K('t1','T1 controller internal state',[WORD('<0-0>/<1-1>/<0-3>','Controller unit number',null,showCtl,t=>UNITS.includes(t),{sug:()=>UNITS})],showCtl)]),
@@ -401,49 +347,18 @@ function removeDs0(num){
 function dpRoots(){
   const dp=()=>S.cfg.dialPeers.find(d=>d.tag===S.ctx.tag);
   const del=k=>(v,x)=>{ delete dp()[k]; mark(); };
-  const l=[
-    K('description','A string describing this dial-peer',[LINE('Up to 64 characters',(v,x)=>{ if(x.neg) delete dp().desc; else dp().desc=v[1]; mark(); })],del('desc'),{nOnly:true}),
-    K('destination-pattern','A full E.164 telephone number prefix',[WORD('WORD','A dial-peer destination pattern, e.g. 900...',null,(v,x)=>{ if(x.neg) delete dp().dest; else dp().dest=v[1]; mark(); },isDial)],del('dest'),{nOnly:true})
-  ];
-  if(dp().type==='pots'){
-    l.push(
-      K('forward-digits','Number of digits to be forwarded',[K('all','Forward all digits',null,(v,x)=>{ if(x.neg) delete dp().fwd; else dp().fwd='all'; mark(); }),NUM(0,32,'Number of digits to forward',null,(v,x)=>{ if(x.neg) delete dp().fwd; else dp().fwd=v[1]; mark(); })],del('fwd'),{nOnly:true}),
-      K('port','Voice port',[WORD('<slot/subunit/port>','Voice port',null,(v,x)=>{ if(x.neg) delete dp().port; else dp().port=v[1]; mark(); },t=>!!S.cfg.voicePorts[t],{sug:()=>Object.keys(S.cfg.voicePorts)})],del('port'),{nOnly:true})
-    );
-  } else {
+  const n=T.dialPeerNodes(dp,'900...');
+  const l=[n.description,n.destination];
+  if(dp().type==='pots') l.push(n.forwardDigits,n.port);
+  else {
     l.push(
       K('codec','Codec',[['g711alaw','G.711 A Law 64000 bps'],['g711ulaw','G.711 u Law 64000 bps'],['g729r8','G.729 8000 bps']].map(([k,h])=>K(k,h,null,(v,x)=>{ if(x.neg) delete dp().codec; else dp().codec=k; mark(); }))),
       K('dtmf-relay','Transport DTMF digits across IP link',[K('rtp-nte','RTP Named Telephone Event RFC 2833',null,(v,x)=>{ if(x.neg) delete dp().dtmf; else dp().dtmf='rtp-nte'; mark(); })],del('dtmf'),{nOnly:true}),
-      K('session','Specify session parameters',[
-        K('protocol','The session protocol to be used',[K('sipv2','IETF Session Initiation Protocol',null,(v,x)=>{ if(x.neg) delete dp().proto; else dp().proto='sipv2'; mark(); })],del('proto'),{nOnly:true}),
-        K('target','Specify session target',[WORD('WORD','ipv4:A.B.C.D',null,(v,x)=>{ if(x.neg) delete dp().target; else dp().target=v[2]; mark(); },t=>/^ipv4:\d{1,3}(\.\d{1,3}){3}$/.test(t))],del('target'),{nOnly:true}),
-        K('transport','Set the session transport',[K('tcp','TCP transport',null,(v,x)=>{ if(x.neg) delete dp().transport; else dp().transport='tcp'; mark(); }),K('udp','UDP transport',null,(v,x)=>{ if(x.neg) delete dp().transport; else dp().transport='udp'; mark(); })],del('transport'),{nOnly:true})
-      ]),
+      n.session,
       K('vad','Voice Activity Detection',null,(v,x)=>{ dp().vad=!x.neg; mark(); })
     );
   }
   return withCommon(l);
-}
-
-/* ---------- actions ---------- */
-function enterConfig(){ S.mode='config'; S.ctx=null; S.flags.conf=true; return 'Enter configuration commands, one per line.  End with CNTL/Z.'; }
-function toPriv(){ S.mode='priv'; S.ctx=null; return ts()+' %SYS-5-CONFIG_I: Configured from console by console'; }
-function exitMode(){ if(S.mode==='config') return toPriv(); S.mode='config'; S.ctx=null; }
-function logout(){ S.mode='exec'; S.ctx=null; return `\n${S.cfg.hostname} con0 is now available\n\nPress RETURN to get started.`; }
-function enterDP(tag,type,x){
-  const ex=S.cfg.dialPeers.find(d=>d.tag===tag);
-  if(x.neg){ if(!ex) return `% Dial-peer ${tag} does not exist`; S.cfg.dialPeers=S.cfg.dialPeers.filter(d=>d.tag!==tag); mark(); return; }
-  if(ex&&ex.type!==type) return `% Dial-peer ${tag} already exists as type ${ex.type}`;
-  if(!ex){ S.cfg.dialPeers.push(type==='voip'?{tag,type,vad:true}:{tag,type}); mark(); }
-  S.mode='dp'; S.ctx={tag};
-}
-function doSave(){ S.startup=clone(S.cfg); S.dirty=false; S.flags.saved=true; }
-function save(){ doSave(); return 'Building configuration...\n[OK]'; }
-function copyRun(){
-  S.pending={prompt:'Destination filename [startup-config]? ',handler:a=>{
-    const t=a.trim(); if(t===''||t==='startup-config'){ doSave(); print('Building configuration...\n[OK]'); }
-    else print('% The simulator only supports startup-config');
-  }};
 }
 
 /* ---------- status ---------- */
@@ -522,12 +437,7 @@ function showCtl(v){
     return L.join('\n');
   }).join('\n\n');
 }
-function showDP(){
-  const L=['TAG        TYPE  OPER  DEST-PATTERN      FWD   SESS-TARGET              PORT'];
-  S.cfg.dialPeers.forEach(d=>L.push(d.tag.padEnd(11)+d.type.padEnd(6)+(operational(d)?'up':'down').padEnd(6)+(d.dest||'').padEnd(18)+(d.type==='pots'?(d.fwd==null?'def':d.fwd):'').padEnd(6)+(d.target||'').padEnd(25)+(d.port||'')));
-  if(!S.cfg.dialPeers.length) L.push('（目前沒有任何 dial-peer）');
-  return L.join('\n');
-}
+function showDP(){ return T.showDP(18,'（目前沒有任何 dial-peer）'); }
 function showIpBrief(){
   return 'Interface              IP-Address      OK? Method Status                Protocol\n'+
          `Loopback0              ${LOOP.padEnd(16)}YES NVRAM  up                    up\n`+
@@ -552,41 +462,6 @@ function showDebug(){
 }
 
 /* ---------- call simulation ---------- */
-function patInfo(p){
-  let r='^',score=0;
-  for(let i=0;i<p.length;i++){
-    const ch=p[i];
-    if(/[0-9*#]/.test(ch)){ r+=ch==='*'?'\\*':ch; score+=10; }
-    else if(ch==='.'){ r+='\\d'; score+=1; }
-    else if(ch==='['){ const j=p.indexOf(']',i); if(j<0) return null; r+=p.slice(i,j+1); score+=5; i=j; }
-    else if(ch==='T'||ch==='t') r+='\\d*';
-    else if(ch==='+') r+='+';
-    else if(ch===',') {}
-    else return null;
-  }
-  try{ return {re:new RegExp(r+'$'),score}; }catch(e){ return null; }
-}
-const operational=d=>!!d.dest&&(d.type==='voip'?!!d.target:(!!d.port&&!!S.cfg.voicePorts[d.port]));
-function bestPeer(num){
-  let best=null;
-  S.cfg.dialPeers.forEach(d=>{
-    if(!operational(d)) return;
-    const pi=patInfo(d.dest); if(!pi||!pi.re.test(num)) return;
-    if(!best||pi.score>best.score) best={d,score:pi.score};
-  });
-  return best&&best.d;
-}
-function forward(d,num){
-  if(d.fwd==='all') return num;
-  if(d.fwd!=null) return num.slice(-Number(d.fwd));
-  return num.slice(((d.dest||'').match(/^\d+/)||[''])[0].length);
-}
-function fwdDesc(d){
-  if(d.fwd==='all') return 'forward-digits all，送完整號碼';
-  if(d.fwd!=null) return `forward-digits ${d.fwd}，只送最後 ${d.fwd} 碼`;
-  const lit=((d.dest||'').match(/^\d+/)||[''])[0];
-  return lit?`沒有設定 forward-digits，預設去掉明確比對的前置碼 ${lit}`:'沒有設定 forward-digits';
-}
 const dbgVpm=(port,m)=>['v',`${ts()} htsp_process_event: [${port}(1), E&M_WINK_START] ${m}`];
 const dbgDp=(num,d)=>['d',`${ts()} //-1/xxxxxxxxxxxx/DPM/dpMatchPeersCore: Calling Number=, Called Number=${num}, Peer Info Type=DIALPEER_INFO_SPEECH`+(d?`\n${ts()} //-1/xxxxxxxxxxxx/DPM/dpMatchPeersMoreArg: Result=Success(0); Dial-peer=${d.tag}, pattern=${d.dest}`:`\n${ts()} //-1/xxxxxxxxxxxx/DPM/dpMatchPeersMoreArg: Result=NO_MATCH(-1)`)];
 function lineChecks(st,dbg,dir){
@@ -684,151 +559,18 @@ function evalTasks(){
     save:S.flags.saved&&!S.dirty
   };
 }
-const openHints=new Set();
-function renderTasks(){
-  const r=evalTasks(); let n=0; const ol=$('#tasks'); ol.innerHTML='';
-  TASKS.forEach(t=>{
-    const done=!!r[t.id]; if(done) n++;
-    const li=document.createElement('li'); if(done) li.className='done';
-    li.innerHTML=`<span class="box" aria-hidden="true"></span><span class="tt">${t.t}${done?'<span style="position:absolute;left:-9999px">（完成）</span>':''}</span><details ${openHints.has(t.id)?'open':''}><summary>提示</summary><div>${t.h}</div></details>`;
-    li.querySelector('details').addEventListener('toggle',e=>{ e.target.open?openHints.add(t.id):openHints.delete(t.id); });
-    ol.appendChild(li);
-  });
-  $('#prog').textContent=`${n}/${TASKS.length}`;
-  $('#meter').style.width=(n/TASKS.length*100)+'%';
-}
-function setLed(id,s){ $('#'+id).className='led'+(s?' '+s:''); }
 function refresh(){
-  promptEl.textContent=promptStr();
+  $('#prompt').textContent=T.promptStr();
   const L=l1(), g=ds0();
   setLed('ledL1',L.up?(L.warns.length?'warn':'on'):'bad');
   setLed('ledSig',!g?'':(g.ok?(L.up?'on':'warn'):'bad'));
   $('#lblSig').textContent=g?`CAS ${g.type.replace('e&m-','E&M ')}`:'CAS 未設定';
   setLed('ledSave',S.dirty?'warn':'');
   $('#lblSave').textContent=S.dirty?'未存檔':'已存檔';
-  renderTasks();
+  T.renderTasks(TASKS,evalTasks());
 }
-
-/* ---------- input ---------- */
-function analyze(raw){
-  let str=raw, roots=modeRoots(S.mode);
-  const pi=str.indexOf('|'); if(pi>=0){ roots=[K('begin','Begin with the line that matches',[LINE('Regular Expression')]),K('include','Include lines that match',[LINE('Regular Expression')]),K('section','Filter a section of output',[LINE('Regular Expression')])]; str=str.slice(pi+1); }
-  const endsSpace=str.length===0||/\s$/.test(str);
-  const toks=str.trim().split(/\s+/).filter(Boolean);
-  const partial=endsSpace?'':toks.pop();
-  const r=walk(toks,roots);
-  if(r.err) return {err:r.err,i:r.i};
-  if(r.done) return {done:true,children:[],partial:'',runnable:true};
-  const vals=r.vals||[], neg=vals[0]==='no'||(vals[0]==='do'&&vals[1]==='no');
-  return {children:r.node?kids(r.node):roots,partial,runnable:r.node?(!!r.node.run&&(!r.node.nOnly||neg)):false};
-}
-function cands(children,partial){
-  const low=partial.toLowerCase(),set=[];
-  children.forEach(n=>{
-    if(n.t==='k'&&n.k.toLowerCase().startsWith(low)) set.push(n.k);
-    if(n.t==='p'&&n.sug) n.sug().forEach(s=>{ if(s.toLowerCase().startsWith(low)&&!set.includes(s)) set.push(s); });
-  });
-  return set;
-}
-function helpList(children,runnable){
-  const items=children.map(n=>[n.t==='k'?n.k:n.label,n.h||'']); if(runnable) items.push(['<cr>','']);
-  const w=Math.max(4,...items.map(i=>i[0].length));
-  return items.map(([a,b])=>'  '+a.padEnd(w+2)+b).join('\n');
-}
-function caret(raw,idx){
-  const m=[...raw.matchAll(/\S+/g)][idx];
-  print(' '.repeat(promptStr().length+(m?m.index:raw.length))+'^','err');
-  print("% Invalid input detected at '^' marker.");
-}
-function doHelp(){
-  if(S.pending) return;
-  const raw=inp.value; print(promptStr()+raw+'?');
-  const a=analyze(raw);
-  if(a.err==='amb') print(`% Ambiguous command:  "${raw.trim()}"`);
-  else if(a.err) caret(raw,a.i);
-  else if(a.partial){ const c=cands(a.children,a.partial); print(c.length?c.join('  '):'% Unrecognized command'); }
-  else if(!a.children.length&&!a.runnable) print('% Unrecognized command');
-  else print(helpList(a.children,a.runnable));
-  inp.value=raw; scrollDown();
-}
-function doTab(){
-  if(S.pending) return;
-  const raw=inp.value,a=analyze(raw);
-  if(a.err||a.done){ flash(); return; }
-  if(!a.partial){ if(!a.children.length){ flash(); return; } print(promptStr()+raw); print(helpList(a.children,a.runnable)); scrollDown(); return; }
-  const c=cands(a.children,a.partial), base=raw.slice(0,raw.length-a.partial.length);
-  if(c.length===1) inp.value=base+c[0]+' ';
-  else if(c.length>1){
-    let cp=c[0];
-    c.forEach(x=>{ let i=0; while(i<cp.length&&i<x.length&&cp[i].toLowerCase()===x[i].toLowerCase()) i++; cp=cp.slice(0,i); });
-    if(cp.length>a.partial.length) inp.value=base+cp; else { print(promptStr()+raw); print(c.join('  ')); scrollDown(); }
-  } else flash();
-  const n=inp.value.length; inp.setSelectionRange(n,n);
-}
-function applyPipe(text,pipe){
-  const [kw,...rest]=pipe.trim().split(/\s+/), pat=rest.join(' ');
-  const k=['begin','include','section'].find(w=>kw&&w.startsWith(kw.toLowerCase()));
-  if(!k||!pat) return '% Incomplete or invalid filter after |';
-  let re; try{ re=new RegExp(pat); }catch(e){ return '% Invalid regular expression'; }
-  const lines=text.split('\n');
-  if(k==='include') return lines.filter(l=>re.test(l)).join('\n');
-  if(k==='begin'){ const i=lines.findIndex(l=>re.test(l)); return i<0?'':lines.slice(i).join('\n'); }
-  const o=[]; let on=false; lines.forEach(l=>{ if(!/^\s/.test(l)) on=re.test(l); if(on) o.push(l); }); return o.join('\n');
-}
-function execute(raw){
-  let line=raw.trim(); if(!line) return;
-  let pipe=null; const pi=line.indexOf('|'); if(pi>=0){ pipe=line.slice(pi+1); line=line.slice(0,pi).trim(); }
-  const toks=line.split(/\s+/);
-  let r=walk(toks,modeRoots(S.mode));
-  if(r.err&&isSub(S.mode)){ const r2=walk(toks,configRoots()); if(!r2.err&&r2.node&&r2.node.run){ S.mode='config'; S.ctx=null; r=r2; } }
-  if(r.err==='amb'){ print(`% Ambiguous command:  "${line}"`); return; }
-  if(r.err){ caret(raw,r.i); return; }
-  let vals=r.vals,neg=false;
-  if(vals[0]==='do') vals=vals.slice(1);
-  if(vals[0]==='no'){ neg=true; vals=vals.slice(1); }
-  if(!r.node.run||(r.node.nOnly&&!neg)){ print('% Incomplete command.'); return; }
-  const res=r.node.run(vals,{neg});
-  if(typeof res==='string'&&res.length) print(pipe?applyPipe(res,pipe):res);
-}
-function submit(){
-  const v=inp.value; inp.value='';
-  if(S.pending){ const p=S.pending; S.pending=null; print(p.prompt+v); p.handler(v); }
-  else { print(promptStr()+v); if(v.trim()){ S.history.push(v); if(S.history.length>200) S.history.shift(); } S.hidx=S.history.length; execute(v); }
-  refresh(); scrollDown();
-}
-function hist(dir){
-  if(!S.history.length) return;
-  S.hidx=Math.max(0,Math.min(S.history.length,S.hidx+dir));
-  inp.value=S.history[S.hidx]||''; const n=inp.value.length; inp.setSelectionRange(n,n);
-}
-function ctrlZ(){
-  if(S.pending) return;
-  print(promptStr()+inp.value+'^Z'); inp.value='';
-  if(S.mode!=='exec'&&S.mode!=='priv') print(toPriv(),'log');
-  refresh(); scrollDown();
-}
-inp.addEventListener('keydown',e=>{
-  if(e.isComposing) return;
-  if(e.key==='Tab'){ e.preventDefault(); doTab(); }
-  else if(e.key==='?'){ e.preventDefault(); doHelp(); }
-  else if(e.key==='Enter'){ e.preventDefault(); submit(); }
-  else if(e.key==='ArrowUp'){ e.preventDefault(); hist(-1); }
-  else if(e.key==='ArrowDown'){ e.preventDefault(); hist(1); }
-  else if(e.ctrlKey&&(e.key==='z'||e.key==='Z')){ e.preventDefault(); ctrlZ(); }
-  else if(e.ctrlKey&&(e.key==='c'||e.key==='C')&&!String(window.getSelection())){ e.preventDefault(); print(promptStr()+inp.value); inp.value=''; scrollDown(); }
-});
-inp.addEventListener('input',()=>{ const i=inp.value.indexOf('?'); if(i>=0){ inp.value=inp.value.slice(0,i); doHelp(); } });
-screen.addEventListener('click',()=>{ if(!String(window.getSelection())) inp.focus(); });
-document.querySelectorAll('.keys button').forEach(b=>{
-  b.addEventListener('pointerdown',e=>e.preventDefault());
-  b.addEventListener('click',()=>{ const k=b.dataset.k; if(k==='tab') doTab(); else if(k==='?') doHelp(); else if(k==='up') hist(-1); else if(k==='down') hist(1); else if(k==='z') ctrlZ(); else submit(); inp.focus(); });
-});
 
 /* ---------- side panel ---------- */
-document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
-  document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b?'true':'false'));
-  ['tasks','sigma','call'].forEach(id=>$('#tab-'+id).hidden=id!==b.dataset.tab);
-}));
 function renderSigma(){
   $('#sgUriNow').textContent=SG.trunk.trim()?`目前生效：${SG.trunk.trim()}`:'目前生效：（未設定）';
   const tb=$('#raList'); tb.innerHTML='';
@@ -848,15 +590,7 @@ $('#raSave').addEventListener('click',()=>{
   if(SG.routes.some(r=>r.addr===a)){ $('#raMsg').textContent=`${a} 已經存在。`; return; }
   SG.routes.push({addr:a,name:n}); $('#raMsg').textContent=`已新增 ${a}。`; $('#raAddr').value=''; renderSigma(); refresh();
 });
-function renderTrace(title,r){
-  const t=$('#trace'); t.innerHTML='';
-  const p=document.createElement('p'); p.className='tt '+(r.ok?'good':'bad'); p.textContent=`${title}：${r.ok?'成功':'失敗'}`; t.appendChild(p);
-  const ol=document.createElement('ol');
-  r.st.forEach(([k,m])=>{ const li=document.createElement('li'); li.className=k; li.textContent=m; ol.appendChild(li); });
-  t.appendChild(ol);
-  const lines=r.dbg.filter(([k])=>(k==='v'&&S.debug.vpm)||(k==='d'&&S.debug.dp));
-  if(lines.length){ lines.forEach(([,l])=>print(l,'dbg')); scrollDown(); }
-}
+const renderTrace=(title,r)=>T.renderTrace(title,r,k=>(k==='v'&&S.debug.vpm)||(k==='d'&&S.debug.dp));
 $('#btnA').addEventListener('click',()=>{
   const e=$('#aExt').value.trim(), n=$('#aNum').value.trim(), r=simA(e,n);
   if(r.ok&&n==='900000') S.flags.callA=true;
@@ -867,14 +601,14 @@ $('#btnB').addEventListener('click',()=>{
   if(r.ok&&n==='360201') S.flags.callB=true;
   renderTrace(`FIT-50 ${u} 撥 ${n}`,r); refresh();
 });
-$('#btnReset').addEventListener('click',()=>{ fresh(); out.innerHTML=''; $('#trace').innerHTML=''; $('#sgUri').value=''; $('#raMsg').textContent=''; renderSigma(); welcome(); refresh(); inp.focus(); });
+$('#btnReset').addEventListener('click',()=>{ fresh(); T.clear(); $('#sgUri').value=''; $('#raMsg').textContent=''; renderSigma(); welcome(); refresh(); T.focus(); });
 function welcome(){
   print('LAB-RTR-B 模擬器：CN 與 FIT-50 介接（T1 CAS）','dim');
   print('Tab 補齊指令或列出選項，? 查看可用參數，↑↓ 叫出歷史指令，Ctrl+Z 回到特權模式。','dim');
   print('controller T1 0/1/0 目前是出廠預設值，dial-peer 也還沒建立。先輸入 enable 開始。\n','dim');
 }
 welcome(); renderSigma(); refresh();
-inp.focus({preventScroll:true});
+T.focus({preventScroll:true});
 })();
 </script>
 </body>
