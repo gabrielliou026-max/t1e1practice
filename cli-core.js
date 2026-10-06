@@ -60,9 +60,9 @@ function applyPipe(text,pipe){
   const lines=text.split('\n');
   if(k==='include') return lines.filter(l=>re.test(l)).join('\n');
   if(k==='begin'){ const i=lines.findIndex(l=>re.test(l)); return i<0?'':lines.slice(i).join('\n'); }
-  const o=[]; let on=false;
-  lines.forEach(l=>{ if(!/^\s/.test(l)) on=re.test(l); if(on) o.push(l); });
-  return o.join('\n');
+  const secs=[];
+  lines.forEach(l=>{ if(!/^\s/.test(l)||!secs.length) secs.push([l]); else secs[secs.length-1].push(l); });
+  return secs.filter(sec=>sec.some(l=>re.test(l))).map(sec=>sec.join('\n')).join('\n');
 }
 function cands(children,partial){
   const low=partial.toLowerCase(), set=[];

@@ -277,12 +277,12 @@ const newVP=()=>({shut:false,compand:null,desc:''});
 function factoryConfig(){
   const c={}; UNITS.forEach(u=>c[u]=defCtl());
   const vp={}; for(let i=0;i<6;i++) vp['1/0/'+i]=newVP();
-  return {hostname:'LAB-RTR-B',globalSwitch:null,controllers:c,serials:{},loopbacks:{},voicePorts:vp,dialPeers:[]};
+  return {hostname:'LAB-RTR-B',globalSwitch:null,controllers:c,serials:{},loopbacks:{},ospf:{},voicePorts:vp,dialPeers:[]};
 }
 function doneConfig(kind){
   const cfg=factoryConfig(), c=cfg.controllers['0/1/0'];
   Object.assign(c,{framing:'esf',linecode:'b8zs',clock:'line primary',cable:'short 110'});
-  cfg.loopbacks['0']={ip:{addr:Q.loop,mask:'255.255.255.255'},desc:''};
+  cfg.loopbacks['0']={ip:{addr:Q.loop,mask:'255.255.255.255'},desc:'',ospf:{pid:'1',area:'0'}}; cfg.ospf['1']={networks:[],rid:null};
   cfg.dialPeers.push({tag:'100',type:'voip',vad:false,dest:'.T',proto:'sipv2',target:'ipv4:'+Q.sigma,transport:'udp',dtmf:'rtp-nte',codec:'g711ulaw'});
   if(kind==='cas'){ c.ds0={num:'1',ts:'1-24',type:'e&m-wink-start'}; cfg.voicePorts['0/1/0:1']=newVP(); }
   else {
@@ -304,7 +304,7 @@ rollQuiz(); fresh();
 const T=CliCore.createTerminal({
   state:()=>S, refresh:()=>refresh(),
   doneHint:'全部任務都完成了。可以按任務分頁的「重設練習」再練一次，或換另一種練習、起始狀態。',
-  modes:{exec:{roots:execRoots,prompt:'>'},priv:{roots:privRoots,prompt:'#'},config:{roots:configRoots,prompt:'(config)#'},ctl:{roots:ctlRoots,prompt:'(config-controller)#'},lo:{roots:loRoots,prompt:'(config-if)#'},if:{roots:ifRoots,prompt:'(config-if)#'},vp:{roots:vpRoots,prompt:'(config-voiceport)#'},dp:{roots:dpRoots,prompt:'(config-dial-peer)#'}},
+  modes:{exec:{roots:execRoots,prompt:'>'},priv:{roots:privRoots,prompt:'#'},config:{roots:configRoots,prompt:'(config)#'},ctl:{roots:ctlRoots,prompt:'(config-controller)#'},lo:{roots:loRoots,prompt:'(config-if)#'},ospf:{roots:ospfRoots,prompt:'(config-router)#'},if:{roots:ifRoots,prompt:'(config-if)#'},vp:{roots:vpRoots,prompt:'(config-voiceport)#'},dp:{roots:dpRoots,prompt:'(config-dial-peer)#'}},
   fix:s=>s.replace(/^(\s*(?:do\s+)?(?:no\s+)?int[a-z]*\s+)((?:lo|se)[a-z]*)(\d)/i,'$1$2 $3'),
   newDialPeer:(tag,type)=>type==='voip'?{tag,type,vad:true}:{tag,type}
 });
@@ -317,7 +317,7 @@ function showRoots(priv){
   const l=[
     K('controllers','Interface controller status',[K('t1','T1 controller internal state',[WORD('<0-0>/<1-1>/<0-3>','Controller unit number',null,showCtl,t=>UNITS.includes(t),{sug:()=>UNITS})],showCtl)]),
     K('dial-peer','Dial Plan Mapping Table for, e.g. VoIP Peers',[K('voice','Voice type dial peers',[K('summary','Dial-peer summary information',null,showDP)])]),
-    K('ip','IP information',[K('interface','IP interface status and configuration',[K('brief','Brief summary of IP status and configuration',null,showIpBrief)])]),
+    K('ip','IP information',[K('interface','IP interface status and configuration',[K('brief','Brief summary of IP status and configuration',null,showIpBrief)]),K('ospf','OSPF information',[K('interface','Interface information',[K('brief','Brief summary of interface information',null,showOspfBrief)])])]),
     K('isdn','ISDN information',[K('status','ISDN Line Status',null,showIsdn)]),
     K('voice','Voice port configuration & stats',[K('port','Voice port status',[K('summary','Summary of all voice ports',null,showVPS)])])
   ];
@@ -363,6 +363,7 @@ function configRoots(){
       K('Loopback','Loopback interface',[NUM(0,2147483647,'Loopback interface number',null,enterLo,{sug:()=>Object.keys(S.cfg.loopbacks).length?Object.keys(S.cfg.loopbacks):['0']})]),
       K('Serial','Serial',[WORD('<0-1>/<0-1>/<0-3>:<0-23>','Serial interface number',null,(v,x)=>enterIf(v[2],x),t=>!!S.cfg.serials[t],{sug:()=>Object.keys(S.cfg.serials)})])
     ]),
+    K('router','Enable a routing process',[K('ospf','Open Shortest Path First (OSPF)',[NUM(1,65535,'Process ID',null,enterOspf,{sug:()=>Object.keys(S.cfg.ospf)})])]),
     K('isdn','ISDN configuration commands',[K('switch-type','Select the ISDN switch type',SW.map(s=>K(s,SWH[s],null,(v,x)=>{S.cfg.globalSwitch=x.neg?null:s; mark();})),(v,x)=>{S.cfg.globalSwitch=null; mark();},{nOnly:true})]),
     K('voice-port','Switch to a voice port',[WORD('<slot/subunit/port>','Voice port',null,(v,x)=>enterVP(v[1],x),t=>!!S.cfg.voicePorts[t],{sug:()=>Object.keys(S.cfg.voicePorts)})])
   ]);
@@ -377,10 +378,55 @@ function enterIf(name,x){ if(x.neg) return '% Removal of channelized serial inte
 function enterVP(name,x){ if(x.neg) return '% Voice ports cannot be removed'; S.mode='vp'; S.ctx={name}; }
 function loRoots(){
   const lb=()=>S.cfg.loopbacks[S.ctx.num];
+  const setOspf=(v,x)=>{
+    if(x.neg){ lb().ospf=null; mark(); return; }
+    const pid=v[2]; lb().ospf={pid,area:areaId(v[4])};
+    S.cfg.ospf[pid]=S.cfg.ospf[pid]||{networks:[],rid:null}; mark();
+  };
   return withCommon([
     K('description','Interface specific description',[LINE('Up to 240 characters describing this interface',(v,x)=>{lb().desc=x.neg?'':v[1]; mark();})],(v,x)=>{lb().desc=''; mark();},{nOnly:true}),
-    K('ip','Interface Internet Protocol config commands',[K('address','Set the IP address of an interface',[WORD('A.B.C.D','IP address',[WORD('A.B.C.D','IP subnet mask',null,(v,x)=>{ lb().ip=x.neg?null:{addr:v[2],mask:v[3]}; mark(); },isIp)],null,isIp)],(v,x)=>{lb().ip=null; mark();},{nOnly:true})])
+    K('ip','Interface Internet Protocol config commands',[
+      K('address','Set the IP address of an interface',[WORD('A.B.C.D','IP address',[WORD('A.B.C.D','IP subnet mask',null,(v,x)=>{ lb().ip=x.neg?null:{addr:v[2],mask:v[3]}; mark(); },isIp)],null,isIp)],(v,x)=>{lb().ip=null; mark();},{nOnly:true}),
+      K('ospf','OSPF interface commands',[NUM(1,65535,'Process ID',[K('area','Set the OSPF area ID',[WORD('<0-4294967295>','OSPF area ID as a decimal value',null,setOspf,areaOk)])],(v,x)=>{lb().ospf=null; mark();},{nOnly:true})],(v,x)=>{lb().ospf=null; mark();},{nOnly:true})
+    ])
   ]);
+}
+const areaOk=t=>/^\d+$/.test(t)&&+t<=4294967295||isIp(t);
+const ip2n=a=>a.split('.').reduce((s,o)=>s*256+(+o),0);
+const areaId=t=>isIp(t)?String(ip2n(t)):String(+t);
+function enterOspf(v,x){
+  const pid=v[2];
+  if(x.neg){
+    if(!S.cfg.ospf[pid]) return;
+    delete S.cfg.ospf[pid];
+    Object.keys(S.cfg.loopbacks).forEach(n=>{ const l=S.cfg.loopbacks[n]; if(l.ospf&&l.ospf.pid===pid) l.ospf=null; });
+    mark(); return;
+  }
+  if(!S.cfg.ospf[pid]){ S.cfg.ospf[pid]={networks:[],rid:null}; mark(); }
+  S.mode='ospf'; S.ctx={pid};
+}
+function ospfRoots(){
+  const pr=()=>S.cfg.ospf[S.ctx.pid];
+  const setNet=(v,x)=>{
+    const net=v[1], wc=v[2], nets=pr().networks, i=nets.findIndex(n=>n.net===net&&n.wc===wc);
+    if(x.neg){ if(i>=0) nets.splice(i,1); mark(); return; }
+    const n={net,wc,area:areaId(v[4])};
+    if(i>=0) nets[i]=n; else nets.push(n);
+    mark();
+  };
+  return withCommon([
+    K('network','Enable routing on an IP network',[WORD('A.B.C.D','Network number',[WORD('A.B.C.D','OSPF wild card bits',[K('area','Set the OSPF area ID',[WORD('<0-4294967295>','OSPF area ID as a decimal value',null,setNet,areaOk)])],null,isIp)],null,isIp)]),
+    K('router-id','router-id for this OSPF process (in IP address format)',[WORD('A.B.C.D','OSPF router-id in IP address format',null,(v,x)=>{ pr().rid=x.neg?null:v[1]; mark(); },isIp)],(v,x)=>{ pr().rid=null; mark(); },{nOnly:true})
+  ]);
+}
+function ospfOf(ip){
+  if(!ip) return null;
+  for(const n of Object.keys(S.cfg.loopbacks)){ const l=S.cfg.loopbacks[n]; if(l.ip&&l.ip.addr===ip&&l.ospf) return {pid:l.ospf.pid,area:l.ospf.area}; }
+  for(const pid of Object.keys(S.cfg.ospf)) for(const nw of S.cfg.ospf[pid].networks){
+    const m=(~ip2n(nw.wc))>>>0;
+    if(((ip2n(ip)&m)>>>0)===((ip2n(nw.net)&m)>>>0)) return {pid,area:nw.area};
+  }
+  return null;
 }
 function ifRoots(){
   const s=()=>S.cfg.serials[S.ctx.name];
@@ -533,7 +579,9 @@ function cfgText(cfg,running){
   Object.keys(cfg.loopbacks).sort((a,b)=>a-b).forEach(n=>{
     const l=cfg.loopbacks[n]; L.push(`interface Loopback${n}`);
     if(l.desc) L.push(` description ${l.desc}`);
-    L.push(l.ip?` ip address ${l.ip.addr} ${l.ip.mask}`:' no ip address','!');
+    L.push(l.ip?` ip address ${l.ip.addr} ${l.ip.mask}`:' no ip address');
+    if(l.ospf) L.push(` ip ospf ${l.ospf.pid} area ${l.ospf.area}`);
+    L.push('!');
   });
   Object.keys(cfg.serials).sort().forEach(n=>{
     const s=cfg.serials[n]; L.push(`interface Serial${n}`);
@@ -550,6 +598,12 @@ function cfgText(cfg,running){
     if(v.compand) L.push(` compand-type ${v.compand}`);
     if(v.desc) L.push(` description ${v.desc}`);
     if(v.shut) L.push(' shutdown');
+    L.push('!');
+  });
+  Object.keys(cfg.ospf).sort((a,b)=>a-b).forEach(pid=>{
+    const o=cfg.ospf[pid]; L.push(`router ospf ${pid}`);
+    if(o.rid) L.push(` router-id ${o.rid}`);
+    o.networks.forEach(n=>L.push(` network ${n.net} ${n.wc} area ${n.area}`));
     L.push('!');
   });
   cfg.dialPeers.forEach(d=>{
@@ -613,6 +667,10 @@ function showIpBrief(){
   ns.forEach(n=>{ const l=S.cfg.loopbacks[n]; L.push(('Loopback'+n).padEnd(23)+(l.ip?l.ip.addr:'unassigned').padEnd(16)+'YES '+(l.ip?'manual':'unset').padEnd(7)+'up                    up'); });
   L.push(ns.length?'（只列出 Loopback 介面）':'（只列出 Loopback 介面，目前還沒有建立任何 Loopback）');
   return L.join('\n');
+}
+function showOspfBrief(){
+  const rows=Object.keys(S.cfg.loopbacks).sort((a,b)=>a-b).map(n=>{ const l=S.cfg.loopbacks[n], o=l.ip&&ospfOf(l.ip.addr); return o?`${('Lo'+n).padEnd(13)}${o.pid.padEnd(6)}${o.area.padEnd(16)}${(l.ip.addr+'/'+(l.ip.mask==='255.255.255.255'?32:l.ip.mask)).padEnd(19)}1     LOOP  0/0`:null; }).filter(Boolean);
+  return rows.length?['Interface    PID   Area            IP Address/Mask    Cost  State Nbrs F/C',...rows].join('\n'):'';
 }
 function showVPS(){
   const L=['                                           IN       OUT','PORT            CH   SIG-TYPE   ADMIN OPER STATUS   STATUS   EC','=============== == ============ ===== ==== ======== ======== =='];
@@ -683,6 +741,7 @@ function simA(ext,dialed){
   if(!t) return fail(`Destination URI Address「${SG.trunk.trim()}」格式不對，應為 sip:IP位址:5060`);
   const mine=Object.keys(S.cfg.loopbacks).map(n=>S.cfg.loopbacks[n].ip).filter(Boolean).map(ip=>ip.addr);
   if(!mine.includes(t.ip)) return fail(mine.length?`Destination URI 指向 ${t.ip}，不是 Red Router 的 Loopback0（${mine[0]}），INVITE 送不到路由器`:`Destination URI 指向 ${t.ip}，但 Red Router 還沒有設定 Loopback0 位址，INVITE 送不到路由器`);
+  if(!ospfOf(t.ip)) return fail(`Red Router 的 Loopback0（${t.ip}）沒有宣告進 OSPF，SIGMA 那邊沒有到這個位址的路由，INVITE 送不到路由器`);
   if(t.port!=='5060') return fail(`SIP 埠是 ${t.port}，路由器在 5060 收 SIP`);
   st.push(['v',`SIGMA 送 SIP INVITE 到 ${t.ip}:5060，被叫 ${dialed}`]);
   const d=bestPeer(dialed);
@@ -739,6 +798,7 @@ const TK={
   pri:{t:'設定 pri-group，改成 PRI 模式',h:'<code>controller T1 0/1/0</code> 底下 <code>pri-group timeslots 1-24</code>。設好後會產生 D 通道 Serial0/1/0:23 和 voice-port 0/1/0:23。'},
   compand:{t:'voice-port 0/1/0:23 的 compand-type 設為 u-law',h:'<code>voice-port 0/1/0:23</code> 底下 <code>compand-type u-law</code>。'},
   dch:{t:'設定 D 通道 interface Serial0/1/0:23',h:'<code>interface Serial0/1/0:23</code> 底下 <code>no ip address</code>、<code>encapsulation ppp</code>、<code>isdn switch-type primary-net5</code>、<code>isdn incoming-voice voice</code>。'},
+  ospf:{t:'把 Loopback0 宣告進 OSPF',h:'<code>interface Loopback0</code> 底下 <code>ip ospf 1 area 0</code>，或 <code>router ospf 1</code> 底下 <code>network Loopback0位址 0.0.0.0 area 0</code>。設好用 <code>show ip ospf interface brief</code> 確認。'},
   lo:{t:'設定 Loopback0 的 IP 位址',h:'<code>interface Loopback0</code>，再用 <code>ip address</code> 設定位址，遮罩 <code>255.255.255.255</code>。位址由題目卡的節點編號換算，例如 345 → 3.4.5.2。設好用 <code>show ip interface brief</code> 確認。'},
   dp100:{t:'FIT-50 打 VoIP 的 dial-peer 100',h:'<code>dial-peer voice 100 voip</code>，設定 destination-pattern、session protocol、session target、session transport、dtmf-relay、codec，最後 <code>no vad</code>。'},
   dp900:{t:()=>MODE==='cas'?'VoIP 打 FIT-50 的 dial-peer 900':'VoIP 打 FIT-50 的 dial-peer 900（port 改成 0/1/0:23）',h:()=>`<code>dial-peer voice 900 pots</code>，<code>destination-pattern</code> 要涵蓋題目卡的 FIT-50 用戶號碼（例如前三碼加 <code>...</code>）、<code>port ${MODE==='cas'?'0/1/0:1':PRI_PORT}</code>，記得 <code>forward-digits all</code>，否則預設會把 pattern 開頭的數字去掉。`},
@@ -751,8 +811,8 @@ const TK={
 function taskIds(){
   const swap=START==='swap';
   return MODE==='cas'
-    ?['conf',...(swap?['tearPri']:[]),'ctl','ds0','lo','dp100','dp900','trunk','route','callA','callB','save']
-    :['conf','gsw',...(swap?['tearCas']:[]),'ctl','pri','compand','dch','lo','dp100','dp900','trunk','route','callA','callB','save'];
+    ?['conf',...(swap?['tearPri']:[]),'ctl','ds0','lo','ospf','dp100','dp900','trunk','route','callA','callB','save']
+    :['conf','gsw',...(swap?['tearCas']:[]),'ctl','pri','compand','dch','lo','ospf','dp100','dp900','trunk','route','callA','callB','save'];
 }
 
 const failOf=r=>(r.st.filter(([k])=>k==='x').pop()||['',''])[1];
@@ -807,6 +867,12 @@ const HINTS={
     const l=S.cfg.loopbacks['0'], now=l&&l.ip?`目前設成 ${l.ip.addr} ${l.ip.mask}，跟題目不同。`:'';
     return {where:{mode:'lo',enter:'interface Loopback0',at:c=>c&&c.num==='0'},a:'SIGMA 會把 SIP 送到路由器的 Loopback0，要先給 Loopback0 一個位址。位址要用題目卡上的節點編號換算。',b:`用 interface Loopback0 建立介面，再用 ip address 設定位址和遮罩（/32，遮罩 255.255.255.255）。換算規則：三位數節點編號拆成三段再加 .2，例如 345 → 3.4.5.2。${now}`,c:[`ip address ${Q.loop} 255.255.255.255`]};
   },
+  ospf:()=>{
+    const l=S.cfg.loopbacks['0'];
+    if(!l||!l.ip) return HINTS.lo();
+    const o=ospfOf(l.ip.addr), now=o?`目前在 OSPF process ${o.pid}、area ${o.area}，跟題目不同。`:'';
+    return {where:{mode:'lo',enter:'interface Loopback0',at:c=>c&&c.num==='0'},a:'Loopback 是虛擬介面，不屬於任何實體網段。要宣告進路由協定，上游和 SIGMA 才知道這個位址往哪送。這裡用 OSPF。',b:`兩種寫法擇一：在 interface Loopback0 底下用 ip ospf，或在 router ospf 1 底下用 network 加 wildcard（/32 的 wildcard 是 0.0.0.0）。題目指定 process 1、area 0。${now}`,c:['ip ospf 1 area 0']};
+  },
   dp100:()=>{
     const d=S.cfg.dialPeers.find(x=>x.tag==='100');
     const c=missing(d,'voip',[['dest','.T','destination-pattern .T'],['proto','sipv2','session protocol sipv2'],['target','ipv4:'+Q.sigma,'session target ipv4:'+Q.sigma],['transport','udp','session transport udp'],['dtmf','rtp-nte','dtmf-relay rtp-nte'],['codec','g711ulaw','codec g711ulaw'],['vad',false,'no vad']]);
@@ -846,6 +912,7 @@ function evalTasks(){
     compand:!!vpP&&vpP.compand==='u-law',
     dch:!!s&&s.noip&&s.encap==='ppp'&&s.sw===FIT_SW&&s.incoming,
     lo:!!(l0&&l0.ip&&l0.ip.addr===Q.loop&&l0.ip.mask==='255.255.255.255'),
+    ospf:(()=>{ const o=l0&&l0.ip&&ospfOf(l0.ip.addr); return !!o&&o.pid==='1'&&o.area==='0'; })(),
     dp100:!!d100&&d100.type==='voip'&&d100.dest==='.T'&&d100.proto==='sipv2'&&d100.target==='ipv4:'+Q.sigma&&d100.transport==='udp'&&d100.dtmf==='rtp-nte'&&d100.codec==='g711ulaw'&&d100.vad===false,
     dp900:!!d900&&d900.type==='pots'&&fitPatOk(d900.dest)&&!!port&&d900.port===port&&d900.fwd==='all',
     trunk:!!t&&t.ip===Q.loop&&t.port==='5060',
@@ -915,6 +982,7 @@ function showPractice(){
   const t1=['framing esf、linecode b8zs','clock source line primary','cablelength short 110'];
   T.renderQuiz('按下方「重設練習」會換一組',[
     ['節點編號',Q.code],
+    ['OSPF','process 1、area 0'],
     ['T1 0/1/0',ccs?t1.concat('pri-group timeslots 1-24'):t1.concat('ds0-group 1，timeslots 1-24','信令 E&M wink-start')],
     ...(ccs?[['ISDN',['switch-type primary-net5（全域與 D 通道）','D 通道 Serial0/1/0:23：no ip address、encapsulation ppp、isdn incoming-voice voice','voice-port 0/1/0:23：compand-type u-law']]]:[]),
     ['SIGMA',['SIP over UDP','codec g711ulaw、dtmf-relay rtp-nte、no vad','內線 '+Q.exts.join('、')]],

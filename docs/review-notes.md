@@ -3,7 +3,7 @@
 依 Cisco 語音閘道的標準設定觀念（CCNA Voice／Collaboration，CVOICE）檢查補充文件 01（CN to FIT50, T1-CAS）、02（CN to FIT50, T1-CCS）與練習器的設定流程。
 
 - 檢查日期：2026-10-06
-- 狀態：**只做紀錄，文件與模擬器都還沒修改**
+- 狀態：**大多只做紀錄**；第 2 點的 Loopback OSPF 已在 2026-10-06 加進模擬器任務
 
 ## 一、文件與設定流程本身（實機也適用）
 
@@ -12,7 +12,7 @@
 | # | 項目 | 說明 | 建議 |
 |---|---|---|---|
 | 1 | SIP 沒有綁定 Loopback0 | SIGMA trunk 指向 Loopback0，但文件沒有綁定 SIP 來源介面。沒有綁定時 SIP／RTP 會用實體介面 IP 送出，SIGMA 可能因來源不符而拒絕，或單向無聲。 | `voice service voip` → `sip` → `bind control source-interface Loopback0`、`bind media source-interface Loopback0`。若現場已設定，文件註明即可。 |
-| 2 | Loopback0 要有路由 | SIGMA 要連得到 3.x.x.2，Loopback 要被宣告出去。 | 例如 Loopback0 下 `ip ospf 1 area 0`。最早的模擬器設定有這行，改成學生自己設定 Loopback 時被拿掉了。 |
+| 2 | Loopback0 要有路由 | SIGMA 要連得到 3.x.x.2，Loopback 要被宣告出去。 | 例如 Loopback0 下 `ip ospf 1 area 0`。**模擬器已加入任務**（process 1、area 0，`ip ospf` 或 `network` 皆可），文件仍待確認是否補上。 |
 | 3 | CCS 的 switch-type 用 primary-net5 | NET5 是歐規 E1（ETSI）。T1 PRI 接 PBX 常見的是 `primary-ni`、`primary-5ess`、`primary-dms100` 或 `primary-qsig`。 | 確認 FIT-50 端實際設定，兩邊不一致 Layer 2 不會起來。 |
 | 4 | ISDN 主從關係只寫觀念 | 文件寫「預設為從（user 端）」，但沒給指令。若 FIT-50 也是 user 端，Layer 2 起不來。 | 文件補上 `isdn protocol-emulate network`，作為 Layer 2 起不來時的排查步驟。 |
 
@@ -33,10 +33,11 @@
 | 10 | ISDN 來電誤報 `.T` 延遲 | CCS 的 FIT-50 來電也顯示「`.T` 會等逾時」。ISDN SETUP 一次帶完整號碼，不會等逾時。**這是 bug。** | 提示只在 CAS 顯示（`fit50-lab.html` 的 `simB`）。 |
 | 11 | 拆 pri-group 前要先 shutdown voice-port | 比照文件 02 拆 ds0-group 的步驟自訂的規則，無法確認實機拆 pri-group 是否有同樣要求。 | 確認實機行為後決定保留或放寬。 |
 | 12 | 拆語音埠時自動清掉 dial-peer 的 port | 簡化行為，不同 IOS 版本可能會擋下來要求先移除。 | 拆除流程改成先在 dial-peer 900 下 `no port`，各版本都適用。 |
-| 13 | 沒有模擬 SIP 綁定與 Loopback 路由 | 即第 1、2 點，學生練不到。 | 加入任務與檢查。 |
+| 13 | 沒有模擬 SIP 綁定 | 第 1 點學生練不到。Loopback 路由（第 2 點）已加入。 | 加入任務與檢查。 |
 
 ## 待決定
 
-- 第 1、2 點：確認現場設備是否已設定，再決定寫進文件或加入練習。
+- 第 1 點：確認現場設備是否已設定，再決定寫進文件或加入練習。
+- 第 2 點：模擬器已完成，文件是否補上 OSPF 待確認。
 - 第 3、4 點：與 FIT-50 端設定確認。
 - 模擬器修改（第 10–13 點，以及 5、6、7 的練習調整）：等確認後再做。
