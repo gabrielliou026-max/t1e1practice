@@ -347,10 +347,18 @@ function createTerminal(o){
     const h=document.createElement('h2'); h.textContent='題目';
     const sm=document.createElement('small'); sm.textContent=note; h.appendChild(sm); q.appendChild(h);
     const dl=document.createElement('dl');
+    const el=(tag,cls,text)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; };
     rows.forEach(([k,v])=>{
-      const dt=document.createElement('dt'); dt.textContent=k; dl.appendChild(dt);
-      const dd=document.createElement('dd');
-      (Array.isArray(v)?v:[v]).forEach(x=>{ const d=document.createElement('div'); d.textContent=x; dd.appendChild(d); });
+      dl.appendChild(el('dt',null,k));
+      const dd=el('dd');
+      const groups=Array.isArray(v)?(v.length&&typeof v[0]==='object'?v:[{items:v}]):[{items:[v]}];
+      groups.forEach(g=>{
+        const box=el('div','grp');
+        if(g.label) box.appendChild(el('div','lab',g.label));
+        const list=el('div','qv'+(g.block?' block':''));
+        g.items.forEach(x=>list.appendChild(el('span',null,x)));
+        box.appendChild(list); dd.appendChild(box);
+      });
       dl.appendChild(dd);
     });
     q.appendChild(dl);

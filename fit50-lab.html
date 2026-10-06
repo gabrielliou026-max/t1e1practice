@@ -97,9 +97,16 @@ ol.tasks li.now .tt{font-weight:700}
 .quiz:empty{display:none}
 .quiz h2{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 10px;font-size:.95rem;margin:0 0 6px}
 .quiz h2 small{font-weight:400;font-size:.78rem;color:var(--muted)}
-.quiz dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0;font-size:.86rem}
-.quiz dt{color:var(--muted)}
-.quiz dd{margin:0;font-family:var(--mono);overflow-wrap:anywhere}
+.quiz dl{display:grid;grid-template-columns:max-content 1fr;column-gap:12px;margin:0;font-size:.86rem}
+.quiz dt,.quiz dd{padding:7px 0;border-top:1px solid var(--line)}
+.quiz dt:first-of-type,.quiz dt:first-of-type+dd{border-top:0;padding-top:2px}
+.quiz dt{color:var(--muted);line-height:1.9}
+.quiz dd{margin:0}
+.quiz .grp+.grp{margin-top:7px}
+.quiz .lab{font-size:.76rem;color:var(--muted);margin-bottom:3px}
+.quiz .qv{display:flex;flex-wrap:wrap;gap:4px 5px}
+.quiz .qv.block{flex-direction:column;align-items:flex-start}
+.quiz .qv span{font-family:var(--mono);font-size:.8rem;line-height:1.5;white-space:nowrap;background:rgba(127,140,120,.16);padding:1px 6px;border-radius:3px}
 ol.tasks details{grid-column:2;font-size:.85rem;color:var(--muted)}
 ol.tasks summary{cursor:pointer;width:max-content}
 ol.tasks code,.pane code{font-family:var(--mono);font-size:.82rem;background:rgba(127,140,120,.16);padding:1px 4px;border-radius:3px}
@@ -142,8 +149,7 @@ table.ra td{padding:5px 4px;border-bottom:1px solid var(--line);font-family:var(
 table.ra td.empty{font-family:var(--sans);color:var(--muted)}
 button.del{font:inherit;font-size:.8rem;padding:2px 8px;border:1px solid var(--line);border-radius:4px;background:transparent;color:var(--ink);cursor:pointer}
 .setup{margin-bottom:12px}
-.setup .row{flex-wrap:wrap}
-.setup .row>div{min-width:140px}
+.setup .row{flex-direction:column;gap:0}
 </style>
 </head>
 <body>
@@ -979,13 +985,13 @@ function showPractice(){
   $('#sigExts').textContent=Q.exts.join('、'); $('#fitUserNote').textContent=Q.fitUser;
   $('#fitSide').textContent=ccs?'FIT-50 端為 T1 esf、b8zs、ISDN PRI（primary-net5，network 端、u-law），':'FIT-50 端為 T1 esf、b8zs、E&M wink-start，';
   $('#dbgNote').innerHTML=ccs?'<code>debug isdn q931</code>':'<code>debug vpm signal</code>';
-  const t1=['framing esf、linecode b8zs','clock source line primary','cablelength short 110'];
+  const t1=['framing esf','linecode b8zs','clock source line primary','cablelength short 110'];
   T.renderQuiz('按下方「重設練習」會換一組',[
     ['節點編號',Q.code],
-    ['OSPF','process 1、area 0'],
-    ['T1 0/1/0',ccs?t1.concat('pri-group timeslots 1-24'):t1.concat('ds0-group 1，timeslots 1-24','信令 E&M wink-start')],
-    ...(ccs?[['ISDN',['switch-type primary-net5（全域與 D 通道）','D 通道 Serial0/1/0:23：no ip address、encapsulation ppp、isdn incoming-voice voice','voice-port 0/1/0:23：compand-type u-law']]]:[]),
-    ['SIGMA',['SIP over UDP','codec g711ulaw、dtmf-relay rtp-nte、no vad','內線 '+Q.exts.join('、')]],
+    ['OSPF',['process 1','area 0']],
+    ['T1 0/1/0',ccs?[{items:t1},{label:'PRI',items:['pri-group timeslots 1-24']}]:[{items:t1},{label:'CAS',items:['ds0-group 1','timeslots 1-24','E&M wink-start']}]],
+    ...(ccs?[['ISDN',[{label:'全域與 D 通道',items:['switch-type primary-net5']},{label:'D 通道 Serial0/1/0:23',items:['no ip address','encapsulation ppp','isdn incoming-voice voice']},{label:'voice-port 0/1/0:23',items:['compand-type u-law']}]]]:[]),
+    ['SIGMA',[{items:['SIP over UDP','codec g711ulaw','dtmf-relay rtp-nte','no vad']},{label:'內線',items:Q.exts}]],
     ['FIT-50 用戶',Q.fitUser]
   ]);
 }
