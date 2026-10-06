@@ -60,13 +60,15 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font
 #out .err{color:var(--err)}
 #out .dbg{color:var(--dbg)}
 #out .log{color:var(--term-dim)}
+#out .hint{color:var(--ok)}
 .inline{display:flex;align-items:baseline}
 #prompt{white-space:pre;color:var(--prompt)}
 #cmd{flex:1;min-width:40px;background:transparent;border:0;outline:0;color:var(--term-ink);font:inherit;padding:0;caret-color:var(--prompt)}
-.keys{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:#000;border-top:1px solid #000}
+.keys{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#000;border-top:1px solid #000}
 .keys button{font-family:var(--mono);font-size:13px;padding:11px 4px;background:var(--term-bar);color:var(--term-ink);border:0;cursor:pointer}
 .keys button:active{background:#33403a}
 .keys button:focus-visible{outline:2px solid var(--prompt);outline-offset:-2px}
+.keys button.hintkey{color:var(--ok);font-family:var(--sans);font-weight:700}
 
 /* side */
 .side{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
@@ -89,6 +91,15 @@ ol.tasks .box::before{content:counter(t)}
 ol.tasks li.done .box{background:var(--olive);border-color:var(--olive);color:var(--olive-ink)}
 ol.tasks li.done .box::before{content:"✓";font-size:13px}
 ol.tasks li.done .tt{color:var(--muted)}
+ol.tasks li.now .box{border-color:var(--amber);color:var(--amber);border-width:2px}
+ol.tasks li.now .tt{font-weight:700}
+.quiz{border:1px solid var(--line);border-left:4px solid var(--amber);border-radius:6px;padding:10px 12px;margin-bottom:14px;background:var(--bg)}
+.quiz:empty{display:none}
+.quiz h2{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 10px;font-size:.95rem;margin:0 0 6px}
+.quiz h2 small{font-weight:400;font-size:.78rem;color:var(--muted)}
+.quiz dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0;font-size:.86rem}
+.quiz dt{color:var(--muted)}
+.quiz dd{margin:0;font-family:var(--mono);overflow-wrap:anywhere}
 ol.tasks details{grid-column:2;font-size:.85rem;color:var(--muted)}
 ol.tasks summary{cursor:pointer;width:max-content}
 ol.tasks code,.pane code{font-family:var(--mono);font-size:.82rem;background:rgba(127,140,120,.16);padding:1px 4px;border-radius:3px}
@@ -136,7 +147,7 @@ button.del{font:inherit;font-size:.8rem;padding:2px 8px;border:1px solid var(--l
 <div class="wrap">
   <header class="top">
     <h1>LAB-RTR-B</h1>
-    <p>CN 與 FIT-50 介接（T1 CAS）練習，依補充文件的步驟設定路由器和 SIGMA。Tab 補齊、? 查選項。</p>
+    <p>CN 與 FIT-50 介接（T1 CAS）練習，照右側題目卡的數值設定路由器和 SIGMA。Tab 補齊、? 查選項。</p>
   </header>
 
   <main class="grid">
@@ -157,6 +168,7 @@ button.del{font:inherit;font-size:.8rem;padding:2px 8px;border:1px solid var(--l
         <button data-k="up">↑</button>
         <button data-k="down">↓</button>
         <button data-k="z">Ctrl+Z</button>
+        <button data-k="hint" class="hintkey">提示</button>
         <button data-k="enter">Enter</button>
       </div>
     </section>
@@ -169,6 +181,7 @@ button.del{font:inherit;font-size:.8rem;padding:2px 8px;border:1px solid var(--l
       </div>
 
       <div class="pane" id="tab-tasks">
+        <section class="quiz" id="quiz" aria-label="題目"></section>
         <div class="progress"><div class="meter"><i id="meter"></i></div><span id="prog">0/10</span></div>
         <ol class="tasks" id="tasks"></ol>
         <button class="btn ghost" id="btnReset">重設練習</button>
@@ -198,39 +211,37 @@ button.del{font:inherit;font-size:.8rem;padding:2px 8px;border:1px solid var(--l
             <p class="note" id="raMsg"></p>
           </div>
         </div>
-        <p class="note">SIGMA 上的內線：360201、360202。這裡只模擬文件用到的兩個畫面，Route Pattern 只做完全相符比對。</p>
+        <p class="note">SIGMA 上的內線：<span id="sigExts"></span>。這裡只模擬文件用到的兩個畫面，Route Pattern 只做完全相符比對。</p>
       </div>
 
       <div class="pane" id="tab-call" hidden>
         <h2>VoIP 打 FIT-50</h2>
         <div class="row">
-          <div><label class="f" for="aExt">發話內線</label><input class="t" id="aExt" value="360201"></div>
-          <div><label class="f" for="aNum">撥打號碼</label><input class="t" id="aNum" value="900000"></div>
+          <div><label class="f" for="aExt">發話內線</label><input class="t" id="aExt"></div>
+          <div><label class="f" for="aNum">撥打號碼</label><input class="t" id="aNum"></div>
         </div>
         <button class="btn" id="btnA">撥出</button>
 
         <h3>FIT-50 打 VoIP</h3>
         <div class="row">
-          <div><label class="f" for="bUser">FIT-50 用戶</label><input class="t" id="bUser" value="900000"></div>
-          <div><label class="f" for="bNum">撥打號碼</label><input class="t" id="bNum" value="360201"></div>
+          <div><label class="f" for="bUser">FIT-50 用戶</label><input class="t" id="bUser"></div>
+          <div><label class="f" for="bNum">撥打號碼</label><input class="t" id="bNum"></div>
         </div>
         <button class="btn" id="btnB">撥出</button>
 
         <div class="trace" id="trace" aria-live="polite"></div>
-        <p class="note">FIT-50 端固定為 T1 esf、b8zs、E&amp;M wink-start，用戶號碼 900000。開啟 <code>debug vpm signal</code> 或 <code>debug voice dialpeer</code> 後，模擬通話時終端機也會印出 debug。</p>
+        <p class="note">FIT-50 端固定為 T1 esf、b8zs、E&amp;M wink-start，用戶號碼 <span id="fitUserNote"></span>。開啟 <code>debug vpm signal</code> 或 <code>debug voice dialpeer</code> 後，模擬通話時終端機也會印出 debug。</p>
         <p class="note">這是簡化的模擬：告警、信令與 debug 輸出都是為了練習而設計，不代表設備的實際行為。</p>
       </div>
     </aside>
   </main>
 </div>
+<script src="cli-core.js"></script>
 <script>
 (function(){
 'use strict';
-const $=s=>document.querySelector(s);
-const out=$('#out'), inp=$('#cmd'), promptEl=$('#prompt'), screen=$('#screen');
-const clone=o=>JSON.parse(JSON.stringify(o));
-const LOOP='172.16.5.2', XRI_IP='10.10.5.124';
-const FIT_USERS=['900000'], XRI_EXT=['360201','360202'];
+const {$,clone,ts,K,NUM,WORD,LINE,isIp,isDial,sortK,forward,fwdDesc}=CliCore;
+let Q;   // 題目：節點編號（換算出 Loopback0 與 SIGMA 位址）、FIT-50 用戶號碼、SIGMA 內線，newQuiz() 產生
 const UNITS=['0/1/0','0/1/1','0/1/2','0/1/3'];
 const SIGS={'e&m-delay-dial':'E & M Delay Dial','e&m-fgb':'E & M Type II FGB','e&m-fgd':'E & M Type II FGD','e&m-immediate-start':'E & M Immediate Start','e&m-wink-start':'E & M Wink Start','fxo-ground-start':'FXO Ground Start','fxo-loop-start':'FXO Loop Start','fxs-ground-start':'FXS Ground Start','fxs-loop-start':'FXS Loop Start','none':'Null Signalling for External Call Control'};
 
@@ -239,7 +250,7 @@ const defCtl=()=>({framing:'sf',linecode:'ami',clock:null,cable:null,desc:'',ds0
 function initialConfig(){
   const c={}; UNITS.forEach(u=>c[u]=defCtl());
   const vp={}; for(let i=0;i<6;i++) vp['1/0/'+i]={};
-  return {hostname:'LAB-RTR-B',controllers:c,voicePorts:vp,dialPeers:[]};
+  return {hostname:'LAB-RTR-B',controllers:c,loopbacks:{},voicePorts:vp,dialPeers:[]};
 }
 let S,SG;
 function fresh(){
@@ -248,70 +259,19 @@ function fresh(){
   SG={trunk:'',routes:[]};
 }
 fresh();
-const mark=()=>{S.dirty=true;};
 
-/* ---------- output ---------- */
-function print(text,cls){
-  String(text).split('\n').forEach(l=>{
-    const d=document.createElement('div'); let c=cls; if(!c&&/^% /.test(l)) c='err';
-    if(c) d.className=c; d.textContent=l; out.appendChild(d);
-  });
-  while(out.childNodes.length>2500) out.removeChild(out.firstChild);
-}
-const scrollDown=()=>{screen.scrollTop=screen.scrollHeight;};
-function flash(){screen.classList.remove('flash');void screen.offsetWidth;screen.classList.add('flash');}
-function ts(){
-  const d=new Date(),M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()],p=(n,l=2)=>String(n).padStart(l,'0');
-  return `*${M} ${String(d.getDate()).padStart(2,' ')} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(),3)}:`;
-}
+const T=CliCore.createTerminal({
+  state:()=>S, refresh:()=>refresh(),
+  doneHint:'全部任務都完成了。可以按任務分頁的「重設練習」從頭再練一次。',
+  modes:{exec:{roots:execRoots,prompt:'>'},priv:{roots:privRoots,prompt:'#'},config:{roots:configRoots,prompt:'(config)#'},ctl:{roots:ctlRoots,prompt:'(config-controller)#'},lo:{roots:loRoots,prompt:'(config-if)#'},dp:{roots:dpRoots,prompt:'(config-dial-peer)#'}},
+  fix:s=>s.replace(/^(\s*(?:do\s+)?(?:no\s+)?int[a-z]*\s+)(lo[a-z]*)(\d)/i,'$1$2 $3'),
+  newDialPeer:(tag,type)=>type==='voip'?{tag,type,vad:true}:{tag,type}
+});
+const {print,mark,withCommon,enterConfig,toPriv,logout,enterDP,save,copyRun,setLed}=T;
+const operational=d=>CliCore.operational(S.cfg,d);
+const bestPeer=num=>CliCore.bestPeer(S.cfg,num);
 
-/* ---------- grammar ---------- */
-const K=(k,h,c,run,o)=>Object.assign({t:'k',k,h,c:c||[],run},o||{});
-const NUM=(min,max,h,c,run,o)=>Object.assign({t:'p',type:'num',min,max,label:`<${min}-${max}>`,h,c:c||[],run},o||{});
-const WORD=(label,h,c,run,v,o)=>Object.assign({t:'p',type:'word',label,h,c:c||[],run,v},o||{});
-const LINE=(h,run)=>({t:'p',type:'line',label:'LINE',h,c:[],run});
-const kids=n=>typeof n.c==='function'?n.c():(n.c||[]);
-const isDial=t=>/^[0-9.\[\]\-T*#+%?,]+$/i.test(t);
-const sortK=l=>l.sort((a,b)=>(a.k||a.label).localeCompare(b.k||b.label));
-function accepts(p,tok){
-  if(p.type==='num') return /^\d+$/.test(tok)&&+tok>=p.min&&+tok<=p.max;
-  if(p.type==='line') return true;
-  return p.v?p.v(tok):true;
-}
-function matchTok(children,tok){
-  const low=tok.toLowerCase();
-  const kws=children.filter(n=>n.t==='k'&&n.k.toLowerCase().startsWith(low));
-  const ex=kws.find(n=>n.k.toLowerCase()===low); if(ex) return {node:ex};
-  const ps=children.filter(n=>n.t==='p'&&accepts(n,tok));
-  if(kws.length===1) return {node:kws[0]};
-  if(kws.length>1) return {amb:true};
-  if(ps.length) return {node:ps[0]};
-  return {bad:true};
-}
-function walk(tokens,roots){
-  let children=roots,node=null; const vals=[];
-  for(let i=0;i<tokens.length;i++){
-    const m=matchTok(children,tokens[i]);
-    if(m.amb) return {err:'amb',i}; if(m.bad) return {err:'bad',i};
-    node=m.node;
-    if(node.t==='p'&&node.type==='line'){ vals.push(tokens.slice(i).join(' ')); return {node,vals,done:true}; }
-    vals.push(node.t==='k'?node.k:tokens[i]); children=kids(node);
-  }
-  return {node,vals};
-}
-
-function commonCfg(){ return [
-  K('do','To run exec commands in config mode',()=>privRoots()),
-  K('end','Exit from configure mode',null,()=>toPriv()),
-  K('exit','Exit from current mode',null,()=>exitMode())
-];}
-const withCommon=list=>sortK(list.concat(commonCfg(),[K('no','Negate a command or set its defaults',()=>list)]));
-const modeRoots=m=>({exec:execRoots,priv:privRoots,config:configRoots,ctl:ctlRoots,dp:dpRoots})[m]();
-const isSub=m=>m==='ctl'||m==='dp';
-function promptStr(){
-  if(S.pending) return S.pending.prompt;
-  return S.cfg.hostname+({exec:'>',priv:'#',config:'(config)#',ctl:'(config-controller)#',dp:'(config-dial-peer)#'})[S.mode];
-}
+/* ---------- mode trees ---------- */
 function showRoots(priv){
   const l=[
     K('controllers','Interface controller status',[K('t1','T1 controller internal state',[WORD('<0-0>/<1-1>/<0-3>','Controller unit number',null,showCtl,t=>UNITS.includes(t),{sug:()=>UNITS})],showCtl)]),
@@ -355,7 +315,21 @@ function configRoots(){
         K('pots','Telephony',null,(v,x)=>enterDP(v[2],'pots',x)),
         K('voip','Voice over IP',null,(v,x)=>enterDP(v[2],'voip',x))
       ],(v,x)=>enterDP(v[2],null,x),{nOnly:true,sug:()=>S.cfg.dialPeers.map(d=>d.tag)})])]),
-    K('hostname','Set system\'s network name',[WORD('WORD','This system\'s network name',null,(v,x)=>{ if(x.neg) return; S.cfg.hostname=v[1]; mark(); })])
+    K('hostname','Set system\'s network name',[WORD('WORD','This system\'s network name',null,(v,x)=>{ if(x.neg) return; S.cfg.hostname=v[1]; mark(); })]),
+    K('interface','Select an interface to configure',[K('Loopback','Loopback interface',[NUM(0,2147483647,'Loopback interface number',null,enterLo,{sug:()=>Object.keys(S.cfg.loopbacks).length?Object.keys(S.cfg.loopbacks):['0']})])])
+  ]);
+}
+function enterLo(v,x){
+  const n=v[2], lbs=S.cfg.loopbacks;
+  if(x.neg){ if(!lbs[n]) return `% Interface Loopback${n} does not exist`; delete lbs[n]; mark(); return; }
+  if(!lbs[n]){ lbs[n]={ip:null,desc:''}; mark(); }
+  S.mode='lo'; S.ctx={num:n};
+}
+function loRoots(){
+  const lb=()=>S.cfg.loopbacks[S.ctx.num];
+  return withCommon([
+    K('description','Interface specific description',[LINE('Up to 240 characters describing this interface',(v,x)=>{lb().desc=x.neg?'':v[1]; mark();})],(v,x)=>{lb().desc=''; mark();},{nOnly:true}),
+    K('ip','Interface Internet Protocol config commands',[K('address','Set the IP address of an interface',[WORD('A.B.C.D','IP address',[WORD('A.B.C.D','IP subnet mask',null,(v,x)=>{ lb().ip=x.neg?null:{addr:v[2],mask:v[3]}; mark(); },isIp)],null,isIp)],(v,x)=>{lb().ip=null; mark();},{nOnly:true})])
   ]);
 }
 function ctlRoots(){
@@ -401,49 +375,18 @@ function removeDs0(num){
 function dpRoots(){
   const dp=()=>S.cfg.dialPeers.find(d=>d.tag===S.ctx.tag);
   const del=k=>(v,x)=>{ delete dp()[k]; mark(); };
-  const l=[
-    K('description','A string describing this dial-peer',[LINE('Up to 64 characters',(v,x)=>{ if(x.neg) delete dp().desc; else dp().desc=v[1]; mark(); })],del('desc'),{nOnly:true}),
-    K('destination-pattern','A full E.164 telephone number prefix',[WORD('WORD','A dial-peer destination pattern, e.g. 900...',null,(v,x)=>{ if(x.neg) delete dp().dest; else dp().dest=v[1]; mark(); },isDial)],del('dest'),{nOnly:true})
-  ];
-  if(dp().type==='pots'){
-    l.push(
-      K('forward-digits','Number of digits to be forwarded',[K('all','Forward all digits',null,(v,x)=>{ if(x.neg) delete dp().fwd; else dp().fwd='all'; mark(); }),NUM(0,32,'Number of digits to forward',null,(v,x)=>{ if(x.neg) delete dp().fwd; else dp().fwd=v[1]; mark(); })],del('fwd'),{nOnly:true}),
-      K('port','Voice port',[WORD('<slot/subunit/port>','Voice port',null,(v,x)=>{ if(x.neg) delete dp().port; else dp().port=v[1]; mark(); },t=>!!S.cfg.voicePorts[t],{sug:()=>Object.keys(S.cfg.voicePorts)})],del('port'),{nOnly:true})
-    );
-  } else {
+  const n=T.dialPeerNodes(dp,'512...');
+  const l=[n.description,n.destination];
+  if(dp().type==='pots') l.push(n.forwardDigits,n.port);
+  else {
     l.push(
       K('codec','Codec',[['g711alaw','G.711 A Law 64000 bps'],['g711ulaw','G.711 u Law 64000 bps'],['g729r8','G.729 8000 bps']].map(([k,h])=>K(k,h,null,(v,x)=>{ if(x.neg) delete dp().codec; else dp().codec=k; mark(); }))),
       K('dtmf-relay','Transport DTMF digits across IP link',[K('rtp-nte','RTP Named Telephone Event RFC 2833',null,(v,x)=>{ if(x.neg) delete dp().dtmf; else dp().dtmf='rtp-nte'; mark(); })],del('dtmf'),{nOnly:true}),
-      K('session','Specify session parameters',[
-        K('protocol','The session protocol to be used',[K('sipv2','IETF Session Initiation Protocol',null,(v,x)=>{ if(x.neg) delete dp().proto; else dp().proto='sipv2'; mark(); })],del('proto'),{nOnly:true}),
-        K('target','Specify session target',[WORD('WORD','ipv4:A.B.C.D',null,(v,x)=>{ if(x.neg) delete dp().target; else dp().target=v[2]; mark(); },t=>/^ipv4:\d{1,3}(\.\d{1,3}){3}$/.test(t))],del('target'),{nOnly:true}),
-        K('transport','Set the session transport',[K('tcp','TCP transport',null,(v,x)=>{ if(x.neg) delete dp().transport; else dp().transport='tcp'; mark(); }),K('udp','UDP transport',null,(v,x)=>{ if(x.neg) delete dp().transport; else dp().transport='udp'; mark(); })],del('transport'),{nOnly:true})
-      ]),
+      n.session,
       K('vad','Voice Activity Detection',null,(v,x)=>{ dp().vad=!x.neg; mark(); })
     );
   }
   return withCommon(l);
-}
-
-/* ---------- actions ---------- */
-function enterConfig(){ S.mode='config'; S.ctx=null; S.flags.conf=true; return 'Enter configuration commands, one per line.  End with CNTL/Z.'; }
-function toPriv(){ S.mode='priv'; S.ctx=null; return ts()+' %SYS-5-CONFIG_I: Configured from console by console'; }
-function exitMode(){ if(S.mode==='config') return toPriv(); S.mode='config'; S.ctx=null; }
-function logout(){ S.mode='exec'; S.ctx=null; return `\n${S.cfg.hostname} con0 is now available\n\nPress RETURN to get started.`; }
-function enterDP(tag,type,x){
-  const ex=S.cfg.dialPeers.find(d=>d.tag===tag);
-  if(x.neg){ if(!ex) return `% Dial-peer ${tag} does not exist`; S.cfg.dialPeers=S.cfg.dialPeers.filter(d=>d.tag!==tag); mark(); return; }
-  if(ex&&ex.type!==type) return `% Dial-peer ${tag} already exists as type ${ex.type}`;
-  if(!ex){ S.cfg.dialPeers.push(type==='voip'?{tag,type,vad:true}:{tag,type}); mark(); }
-  S.mode='dp'; S.ctx={tag};
-}
-function doSave(){ S.startup=clone(S.cfg); S.dirty=false; S.flags.saved=true; }
-function save(){ doSave(); return 'Building configuration...\n[OK]'; }
-function copyRun(){
-  S.pending={prompt:'Destination filename [startup-config]? ',handler:a=>{
-    const t=a.trim(); if(t===''||t==='startup-config'){ doSave(); print('Building configuration...\n[OK]'); }
-    else print('% The simulator only supports startup-config');
-  }};
 }
 
 /* ---------- status ---------- */
@@ -477,7 +420,11 @@ function cfgText(cfg,running){
     if(c.desc) L.push(` description ${c.desc}`);
     L.push('!');
   });
-  L.push('interface Loopback0',` ip address ${LOOP} 255.255.255.255`,' ip ospf 1 area 0','!');
+  Object.keys(cfg.loopbacks).sort((a,b)=>a-b).forEach(n=>{
+    const l=cfg.loopbacks[n]; L.push(`interface Loopback${n}`);
+    if(l.desc) L.push(` description ${l.desc}`);
+    L.push(l.ip?` ip address ${l.ip.addr} ${l.ip.mask}`:' no ip address','!');
+  });
   Object.keys(cfg.voicePorts).sort().forEach(n=>L.push(`voice-port ${n}`,'!'));
   cfg.dialPeers.forEach(d=>{
     L.push(`dial-peer voice ${d.tag} ${d.type}`);
@@ -522,16 +469,12 @@ function showCtl(v){
     return L.join('\n');
   }).join('\n\n');
 }
-function showDP(){
-  const L=['TAG        TYPE  OPER  DEST-PATTERN      FWD   SESS-TARGET              PORT'];
-  S.cfg.dialPeers.forEach(d=>L.push(d.tag.padEnd(11)+d.type.padEnd(6)+(operational(d)?'up':'down').padEnd(6)+(d.dest||'').padEnd(18)+(d.type==='pots'?(d.fwd==null?'def':d.fwd):'').padEnd(6)+(d.target||'').padEnd(25)+(d.port||'')));
-  if(!S.cfg.dialPeers.length) L.push('（目前沒有任何 dial-peer）');
-  return L.join('\n');
-}
+function showDP(){ return T.showDP(18,'（目前沒有任何 dial-peer）'); }
 function showIpBrief(){
-  return 'Interface              IP-Address      OK? Method Status                Protocol\n'+
-         `Loopback0              ${LOOP.padEnd(16)}YES NVRAM  up                    up\n`+
-         '（模擬器只列出 Loopback0）';
+  const L=['Interface              IP-Address      OK? Method Status                Protocol'], ns=Object.keys(S.cfg.loopbacks).sort((a,b)=>a-b);
+  ns.forEach(n=>{ const l=S.cfg.loopbacks[n]; L.push(('Loopback'+n).padEnd(23)+(l.ip?l.ip.addr:'unassigned').padEnd(16)+'YES '+(l.ip?'manual':'unset').padEnd(7)+'up                    up'); });
+  L.push(ns.length?'（模擬器只列出 Loopback 介面）':'（模擬器只列出 Loopback 介面，目前還沒有建立任何 Loopback）');
+  return L.join('\n');
 }
 function showVPS(){
   const L=['                                           IN       OUT','PORT            CH   SIG-TYPE   ADMIN OPER STATUS   STATUS   EC','=============== == ============ ===== ==== ======== ======== =='];
@@ -552,41 +495,6 @@ function showDebug(){
 }
 
 /* ---------- call simulation ---------- */
-function patInfo(p){
-  let r='^',score=0;
-  for(let i=0;i<p.length;i++){
-    const ch=p[i];
-    if(/[0-9*#]/.test(ch)){ r+=ch==='*'?'\\*':ch; score+=10; }
-    else if(ch==='.'){ r+='\\d'; score+=1; }
-    else if(ch==='['){ const j=p.indexOf(']',i); if(j<0) return null; r+=p.slice(i,j+1); score+=5; i=j; }
-    else if(ch==='T'||ch==='t') r+='\\d*';
-    else if(ch==='+') r+='+';
-    else if(ch===',') {}
-    else return null;
-  }
-  try{ return {re:new RegExp(r+'$'),score}; }catch(e){ return null; }
-}
-const operational=d=>!!d.dest&&(d.type==='voip'?!!d.target:(!!d.port&&!!S.cfg.voicePorts[d.port]));
-function bestPeer(num){
-  let best=null;
-  S.cfg.dialPeers.forEach(d=>{
-    if(!operational(d)) return;
-    const pi=patInfo(d.dest); if(!pi||!pi.re.test(num)) return;
-    if(!best||pi.score>best.score) best={d,score:pi.score};
-  });
-  return best&&best.d;
-}
-function forward(d,num){
-  if(d.fwd==='all') return num;
-  if(d.fwd!=null) return num.slice(-Number(d.fwd));
-  return num.slice(((d.dest||'').match(/^\d+/)||[''])[0].length);
-}
-function fwdDesc(d){
-  if(d.fwd==='all') return 'forward-digits all，送完整號碼';
-  if(d.fwd!=null) return `forward-digits ${d.fwd}，只送最後 ${d.fwd} 碼`;
-  const lit=((d.dest||'').match(/^\d+/)||[''])[0];
-  return lit?`沒有設定 forward-digits，預設去掉明確比對的前置碼 ${lit}`:'沒有設定 forward-digits';
-}
 const dbgVpm=(port,m)=>['v',`${ts()} htsp_process_event: [${port}(1), E&M_WINK_START] ${m}`];
 const dbgDp=(num,d)=>['d',`${ts()} //-1/xxxxxxxxxxxx/DPM/dpMatchPeersCore: Calling Number=, Called Number=${num}, Peer Info Type=DIALPEER_INFO_SPEECH`+(d?`\n${ts()} //-1/xxxxxxxxxxxx/DPM/dpMatchPeersMoreArg: Result=Success(0); Dial-peer=${d.tag}, pattern=${d.dest}`:`\n${ts()} //-1/xxxxxxxxxxxx/DPM/dpMatchPeersMoreArg: Result=NO_MATCH(-1)`)];
 function lineChecks(st,dbg,dir){
@@ -595,7 +503,7 @@ function lineChecks(st,dbg,dir){
   if(L.warns.includes('linecode')) st.push(['w','linecode 與 FIT-50 不一致，線路有錯誤碼，通話品質可能受影響（模擬）']);
   if(L.warns.includes('clock')) st.push(['w','時脈設成 internal，與 FIT-50 不同步，會有 slip（模擬）']);
   if(!g){ st.push(['x','controller 沒有 ds0-group，沒有可用的語音埠']); return null; }
-  if(g.ts!=='1-24') st.push(['w',`ds0-group 只開了 timeslots ${g.ts}，文件是 1-24`]);
+  if(g.ts!=='1-24') st.push(['w',`ds0-group 只開了 timeslots ${g.ts}，題目是 1-24`]);
   if(!g.ok){
     if(g.type==='e&m-immediate-start') st.push(['x',dir==='out'
       ?'信令是 immediate-start：路由器佔線後立刻送號，沒等 FIT-50 回 wink，FIT-50 還沒準備好收號，號碼遺失（模擬）'
@@ -615,9 +523,10 @@ function simA(ext,dialed){
   const t=trunkDest();
   if(!SG.trunk.trim()) return fail('FIT-50 trunk 沒有設定 Destination URI Address');
   if(!t) return fail(`Destination URI Address「${SG.trunk.trim()}」格式不對，應為 sip:IP位址:5060`);
-  if(t.ip!==LOOP) return fail(`Destination URI 指向 ${t.ip}，不是 Red Router 的 Loopback0（${LOOP}），INVITE 送不到路由器`);
+  const mine=Object.keys(S.cfg.loopbacks).map(n=>S.cfg.loopbacks[n].ip).filter(Boolean).map(ip=>ip.addr);
+  if(!mine.includes(t.ip)) return fail(mine.length?`Destination URI 指向 ${t.ip}，不是 Red Router 的 Loopback0（${mine[0]}），INVITE 送不到路由器`:`Destination URI 指向 ${t.ip}，但 Red Router 還沒有設定 Loopback0 位址，INVITE 送不到路由器`);
   if(t.port!=='5060') return fail(`SIP 埠是 ${t.port}，路由器在 5060 收 SIP`);
-  st.push(['v',`SIGMA 送 SIP INVITE 到 ${LOOP}:5060，被叫 ${dialed}`]);
+  st.push(['v',`SIGMA 送 SIP INVITE 到 ${t.ip}:5060，被叫 ${dialed}`]);
   const d=bestPeer(dialed);
   dbg.push(dbgDp(dialed,d));
   if(!d) return fail(`路由器沒有 dial-peer 符合 ${dialed}`);
@@ -628,7 +537,7 @@ function simA(ext,dialed){
   st.push(['v',`符合 dial-peer ${d.tag}（${d.dest}），${fwdDesc(d)}，從 ${d.port} 送出 ${sent||'（空號碼）'}`]);
   if(!lineChecks(st,dbg,'out')) return {ok:false,st,dbg};
   dbg.push(dbgVpm(g.port,'TX: SEIZE'),dbgVpm(g.port,'RX: WINK'),dbgVpm(g.port,`TX: DIGITS ${sent}`));
-  if(!FIT_USERS.includes(sent)) return fail(`FIT-50 收到 ${sent||'（空號碼）'}，沒有這個用戶`);
+  if(sent!==Q.fitUser) return fail(`FIT-50 收到 ${sent||'（空號碼）'}，沒有這個用戶`);
   st.push(['v',`FIT-50 用戶 ${sent} 響鈴`]);
   return {ok:true,st,dbg};
 }
@@ -644,12 +553,12 @@ function simB(user,dialed){
   if(!d) return fail(`路由器沒有 dial-peer 符合 ${dialed}，通話被拒`);
   if(d.type==='pots') return fail(`符合 dial-peer ${d.tag}（${d.dest}），通話被送回 ${d.port}，沒有送到 SIGMA`);
   if(/T/i.test(d.dest)) st.push(['i',`dial-peer ${d.tag} 的 ${d.dest} 含 T，路由器會等數字間隔逾時才送出，接通前會有幾秒延遲`]);
-  if(d.target!=='ipv4:'+XRI_IP) return fail(`session target 是 ${d.target.replace('ipv4:','')}，不是 SIGMA（${XRI_IP}）`);
+  if(d.target!=='ipv4:'+Q.sigma) return fail(`session target 是 ${d.target.replace('ipv4:','')}，不是節點 ${Q.code} 的 SIGMA 位址`);
   if(d.proto!=='sipv2') st.push(['w','沒有設定 session protocol sipv2，預設會用 H.323，SIGMA 這條 trunk 是 SIP（模擬）']);
   if(d.dtmf!=='rtp-nte') st.push(['w','沒有 dtmf-relay rtp-nte，通話中按鍵（DTMF）可能傳不過去']);
-  st.push(['v',`符合 dial-peer ${d.tag}（${d.dest}），送 SIP INVITE 到 ${XRI_IP}`]);
+  st.push(['v',`符合 dial-peer ${d.tag}（${d.dest}），送 SIP INVITE 到 ${Q.sigma}`]);
   if(d.proto!=='sipv2') return fail('SIGMA 不接受 H.323 呼叫，通話失敗（模擬）');
-  if(!XRI_EXT.includes(dialed)) return fail(`SIGMA 沒有內線 ${dialed}，回覆 404 Not Found`);
+  if(!Q.exts.includes(dialed)) return fail(`SIGMA 沒有內線 ${dialed}，回覆 404 Not Found`);
   st.push(['v',`SIGMA 內線 ${dialed} 響鈴`]);
   return {ok:true,st,dbg};
 }
@@ -657,178 +566,102 @@ function simB(user,dialed){
 /* ---------- tasks ---------- */
 const TASKS=[
   {id:'conf',t:'進入特權模式和全域設定模式',h:'<code>enable</code>，再 <code>configure terminal</code>（可縮寫 <code>conf t</code>）。'},
-  {id:'ctl',t:'步驟 1：設定 controller T1 0/1/0 的實體層',h:'<code>controller t1 0/1/0</code>，設定 framing、clock source、linecode、cablelength，參數照文件。用 <code>show controllers t1 0/1/0</code> 確認沒有告警。'},
+  {id:'ctl',t:'步驟 1：設定 controller T1 0/1/0 的實體層',h:'<code>controller t1 0/1/0</code>，設定 framing、clock source、linecode、cablelength，參數照上方題目卡。用 <code>show controllers t1 0/1/0</code> 確認沒有告警。'},
   {id:'ds0',t:'步驟 1：設定 ds0-group，信令用 E&amp;M wink-start',h:'<code>ds0-group 1 timeslots 1-24 type e&amp;m-wink-start</code>。文件寫成 e&amp;m-winkstart，模擬器以 另一站實際組態的 e&amp;m-wink-start 為準，實機請用 ? 確認。設好後 <code>show voice port summary</code> 會出現 0/1/0:1。'},
+  {id:'lo',t:'步驟 1：設定 Loopback0 的 IP 位址',h:'<code>interface Loopback0</code>，再用 <code>ip address</code> 設定位址，遮罩 <code>255.255.255.255</code>。位址由題目卡的節點編號換算，例如 345 → 3.4.5.2。設好用 <code>show ip interface brief</code> 確認。'},
   {id:'dp100',t:'步驟 2.1：FIT-50 打 VoIP 的 dial-peer 100',h:'<code>dial-peer voice 100 voip</code>，設定 destination-pattern、session protocol、session target、session transport、dtmf-relay、codec，最後 <code>no vad</code>。'},
-  {id:'dp900',t:'步驟 2.2：VoIP 打 FIT-50 的 dial-peer 900',h:'<code>dial-peer voice 900 pots</code>，<code>destination-pattern 900...</code>、<code>port 0/1/0:1</code>，記得 <code>forward-digits all</code>，否則預設會把 900 去掉。'},
+  {id:'dp900',t:'步驟 2.2：VoIP 打 FIT-50 的 dial-peer 900',h:()=>'<code>dial-peer voice 900 pots</code>，<code>destination-pattern</code> 要涵蓋題目卡的 FIT-50 用戶號碼（例如前三碼加 <code>...</code>）、<code>port 0/1/0:1</code>，記得 <code>forward-digits all</code>，否則預設會把 pattern 開頭的數字去掉。'},
   {id:'trunk',t:'步驟 3.1：SIGMA 的 FIT-50 trunk 指向 Loopback0',h:'到 SIGMA 分頁，Destination URI Address 填 <code>sip:Loopback0位址:5060</code>。Loopback0 位址可以用 <code>show ip interface brief</code> 查。'},
-  {id:'route',t:'步驟 3.2：SIGMA 新增 Routing Address',h:'到 SIGMA 分頁新增 Address <code>900000</code>，Name 填 FIT-50。'},
-  {id:'callA',t:'步驟 4.1：VoIP 撥 900000 打通 FIT-50',h:'到模擬通話分頁按「VoIP 打 FIT-50」的撥出。失敗時看每一步的原因，或開 <code>debug voice dialpeer</code>。'},
-  {id:'callB',t:'步驟 4.2：FIT-50 撥 360201 打通 VoIP',h:'到模擬通話分頁按「FIT-50 打 VoIP」的撥出。可以開 <code>debug vpm signal</code> 看 seize 和 wink。'},
+  {id:'route',t:'步驟 3.2：SIGMA 新增 Routing Address',h:()=>'到 SIGMA 分頁新增 Address <code>'+Q.fitUser+'</code>，Name 填 FIT-50。'},
+  {id:'callA',t:()=>`步驟 4.1：VoIP 撥 ${Q.fitUser} 打通 FIT-50`,h:'到模擬通話分頁按「VoIP 打 FIT-50」的撥出。失敗時看每一步的原因，或開 <code>debug voice dialpeer</code>。'},
+  {id:'callB',t:()=>`步驟 4.2：FIT-50 撥 ${Q.exts[0]} 打通 VoIP`,h:'到模擬通話分頁按「FIT-50 打 VoIP」的撥出。可以開 <code>debug vpm signal</code> 看 seize 和 wink。'},
   {id:'save',t:'存檔',h:'<code>write memory</code> 或 <code>copy running-config startup-config</code>。'}
 ];
+/* 分三層的提示：a 方向、b 用哪個指令、c 完整指令。見 cli-core.js 的 createTerminal 說明 */
+const failOf=r=>(r.st.filter(([k])=>k==='x').pop()||['',''])[1];
+const atCtl={mode:'ctl',enter:'controller t1 0/1/0',at:c=>c&&c.name==='0/1/0'};
+const atDp=(tag,type)=>({mode:'dp',enter:`dial-peer voice ${tag} ${type}`,at:c=>c&&c.tag===tag});
+/* 列出 dial-peer 還沒設好的項目：want 是 [欄位, 正確值或判斷函式, 指令] */
+function missing(d,type,want){
+  const c=[];
+  if(d&&d.type!==type) c.push(`（dial-peer ${d.tag} 已經是 ${d.type}，先在設定模式用 no dial-peer voice ${d.tag} 刪掉）`);
+  want.forEach(([k,v,cmd])=>{ if(!d||d.type!==type||!(typeof v==='function'?v(d[k]):d[k]===v)) c.push(cmd); });
+  return c;
+}
+/* dial-peer 900 的 destination-pattern：要比對得到 FIT-50 用戶，又不能把 SIGMA 內線也吃進來（否則 FIT-50 打 VoIP 會被繞回 T1） */
+function fitPatOk(p){ const pi=p&&CliCore.patInfo(p); return !!pi&&pi.re.test(Q.fitUser)&&!Q.exts.some(x=>pi.re.test(x)); }
+const fitPat=()=>Q.fitUser.slice(0,3)+'...';
+const HINTS={
+  conf:()=>({where:{mode:'config'},a:'要先進入設定模式，才能修改路由器的設定。',b:'enable 進入特權模式（提示字元變成 #），再用 configure terminal 進入設定模式。',c:['照上面的順序輸入。configure terminal 可以縮寫成 conf t，提示字元變成 (config)# 就完成了。']}),
+  ctl:()=>{
+    const c=S.cfg.controllers['0/1/0'], miss=[];
+    if(c.framing!=='esf') miss.push('framing esf');
+    if(c.linecode!=='b8zs') miss.push('linecode b8zs');
+    if(c.clock!=='line primary') miss.push('clock source line primary');
+    if(c.cable!=='short 110') miss.push('cablelength short 110');
+    return {where:atCtl,a:'controller T1 0/1/0 還是出廠預設值，實體層參數要跟 FIT-50 一致，線路才會起來。先用 show controllers t1 0/1/0 看告警。',b:`到 controller 底下設定 framing、linecode、clock source、cablelength 四項，每一項都可以打 ? 看選項。還有 ${miss.length} 項沒設好。`,c:miss};
+  },
+  ds0:()=>{
+    const g=S.cfg.controllers['0/1/0'].ds0, c=[];
+    if(g&&g.num!=='1') c.push(`no ds0-group ${g.num}`);
+    c.push('ds0-group 1 timeslots 1-24 type e&m-wink-start');
+    return {where:atCtl,a:'controller 要設定 ds0-group 才會產生語音埠，信令要跟 FIT-50 一樣用 E&M wink-start。',b:'在 controller 底下用 ds0-group：channel 用 1、timeslots 用 1-24，type 打 ? 找 wink-start 那一個。',c};
+  },
+  lo:()=>{
+    const l=S.cfg.loopbacks['0'], now=l&&l.ip?`目前設成 ${l.ip.addr} ${l.ip.mask}，跟題目不同。`:'';
+    return {where:{mode:'lo',enter:'interface Loopback0',at:c=>c&&c.num==='0'},a:'SIGMA 會把 SIP 送到路由器的 Loopback0，要先給 Loopback0 一個位址。位址要用題目卡上的節點編號換算。',b:`用 interface Loopback0 建立介面，再用 ip address 設定位址和遮罩（/32，遮罩 255.255.255.255）。換算規則：三位數節點編號拆成三段再加 .2，例如 345 → 3.4.5.2。${now}`,c:[`ip address ${Q.loop} 255.255.255.255`]};
+  },
+  dp100:()=>{
+    const d=S.cfg.dialPeers.find(x=>x.tag==='100');
+    const c=missing(d,'voip',[['dest','.T','destination-pattern .T'],['proto','sipv2','session protocol sipv2'],['target','ipv4:'+Q.sigma,'session target ipv4:'+Q.sigma],['transport','udp','session transport udp'],['dtmf','rtp-nte','dtmf-relay rtp-nte'],['codec','g711ulaw','codec g711ulaw'],['vad',false,'no vad']]);
+    return {where:atDp('100','voip'),a:'FIT-50 打進來的電話，路由器要用一個 VoIP dial-peer 送到 SIGMA。',b:`建立 dial-peer voice 100 voip，設定 destination-pattern、session protocol / target / transport、dtmf-relay、codec，最後關掉 vad。SIGMA 的位址由節點編號換算：10.211.(節點編號-300).124，例如 345 → 10.211.45.124。還有 ${c.length} 項沒設好。`,c};
+  },
+  dp900:()=>{
+    const g=ds0();
+    if(!g) return {where:atCtl,a:'dial-peer 900 要指向 T1 的語音埠，但 controller 還沒有 ds0-group。',b:'先到 controller 底下設定 ds0-group。',c:['ds0-group 1 timeslots 1-24 type e&m-wink-start']};
+    const d=S.cfg.dialPeers.find(x=>x.tag==='900');
+    const c=missing(d,'pots',[['dest',fitPatOk,'destination-pattern '+fitPat()],['port',g.port,'port '+g.port],['fwd','all','forward-digits all']]);
+    const bad=d&&d.dest&&!fitPatOk(d.dest)?`目前的 destination-pattern ${d.dest} ${CliCore.patInfo(d.dest)&&CliCore.patInfo(d.dest).re.test(Q.fitUser)?'範圍太大，連 SIGMA 內線也比對得到':'比對不到 FIT-50 用戶 '+Q.fitUser}。`:'';
+    return {where:atDp('900','pots'),a:`SIGMA 打 FIT-50 用戶 ${Q.fitUser} 的電話，路由器要用一個 POTS dial-peer 從 T1 語音埠送出去。`,b:`建立 dial-peer voice 900 pots，設定 destination-pattern、port、forward-digits。pattern 要比對得到 ${Q.fitUser}，常見寫法是前三碼加 ...（一個點代表一位數字）。沒設 forward-digits 的話，預設會把 pattern 開頭的數字去掉。${bad}`,c};
+  },
+  trunk:()=>({where:{tab:'sigma',name:'SIGMA'},a:'SIGMA 要知道 FIT-50 trunk 的 SIP 要送到哪裡，答案是路由器的 Loopback0。',b:'就是路由器 Loopback0 的位址（由節點編號換算），可以在終端機用 show ip interface brief 確認。到 SIGMA 分頁填 Destination URI Address，格式是 sip:位址:5060。',c:[`Destination URI Address 填 sip:${Q.loop}:5060，按 Save My Changes`]}),
+  route:()=>({where:{tab:'sigma',name:'SIGMA'},a:`SIGMA 要有一筆 Routing Address，才知道撥 ${Q.fitUser} 要送往 FIT-50 trunk。`,b:'到 SIGMA 分頁的 Routing Address 區塊新增一筆，號碼是題目卡上的 FIT-50 用戶。',c:[`Address 填 ${Q.fitUser}，Name 填 FIT-50，按 Save Changes`]}),
+  callA:()=>{ const r=simA(Q.exts[0],Q.fitUser); return {where:{tab:'call',name:'模擬通話'},a:'設定都做完了，實際撥一通「VoIP 打 FIT-50」驗證。',b:r.ok?'目前的設定可以打通，到模擬通話分頁按「VoIP 打 FIT-50」的撥出。':`現在撥會失敗：${failOf(r)}`,c:r.ok?[`發話內線 ${Q.exts[0]}、撥打號碼 ${Q.fitUser}，按撥出`]:[`失敗原因：${failOf(r)}`,`修好之後，發話內線 ${Q.exts[0]}、撥打號碼 ${Q.fitUser}，按撥出`]}; },
+  callB:()=>{ const r=simB(Q.fitUser,Q.exts[0]); return {where:{tab:'call',name:'模擬通話'},a:'實際撥一通「FIT-50 打 VoIP」驗證另一個方向。',b:r.ok?'目前的設定可以打通，到模擬通話分頁按「FIT-50 打 VoIP」的撥出。':`現在撥會失敗：${failOf(r)}`,c:r.ok?[`FIT-50 用戶 ${Q.fitUser}、撥打號碼 ${Q.exts[0]}，按撥出`]:[`失敗原因：${failOf(r)}`,`修好之後，FIT-50 用戶 ${Q.fitUser}、撥打號碼 ${Q.exts[0]}，按撥出`]}; },
+  save:()=>({where:{mode:'priv'},a:'設定還沒存檔，重開機就會不見。',b:'在特權模式把 running-config 存到 startup-config。',c:['write memory（或 copy running-config startup-config）']})
+};
+TASKS.forEach(t=>{ t.g=HINTS[t.id]; });
+
 function evalTasks(){
   const c=S.cfg.controllers['0/1/0'], g=ds0(), L=l1();
   const d100=S.cfg.dialPeers.find(d=>d.tag==='100'), d900=S.cfg.dialPeers.find(d=>d.tag==='900');
-  const t=trunkDest();
+  const t=trunkDest(), l0=S.cfg.loopbacks['0'];
   return {
     conf:S.flags.conf,
     ctl:L.up&&!L.warns.length&&c.clock==='line primary'&&c.cable==='short 110',
     ds0:!!g&&g.ok&&g.ts==='1-24'&&g.num==='1',
-    dp100:!!d100&&d100.type==='voip'&&d100.dest==='.T'&&d100.proto==='sipv2'&&d100.target==='ipv4:'+XRI_IP&&d100.transport==='udp'&&d100.dtmf==='rtp-nte'&&d100.codec==='g711ulaw'&&d100.vad===false,
-    dp900:!!d900&&d900.type==='pots'&&d900.dest==='900...'&&!!g&&d900.port===g.port&&d900.fwd==='all',
-    trunk:!!t&&t.ip===LOOP&&t.port==='5060',
-    route:SG.routes.some(r=>r.addr==='900000'),
-    callA:S.flags.callA&&simA('360201','900000').ok,
-    callB:S.flags.callB&&simB('900000','360201').ok,
+    lo:!!(l0&&l0.ip&&l0.ip.addr===Q.loop&&l0.ip.mask==='255.255.255.255'),
+    dp100:!!d100&&d100.type==='voip'&&d100.dest==='.T'&&d100.proto==='sipv2'&&d100.target==='ipv4:'+Q.sigma&&d100.transport==='udp'&&d100.dtmf==='rtp-nte'&&d100.codec==='g711ulaw'&&d100.vad===false,
+    dp900:!!d900&&d900.type==='pots'&&fitPatOk(d900.dest)&&!!g&&d900.port===g.port&&d900.fwd==='all',
+    trunk:!!t&&t.ip===Q.loop&&t.port==='5060',
+    route:SG.routes.some(r=>r.addr===Q.fitUser),
+    callA:S.flags.callA&&simA(Q.exts[0],Q.fitUser).ok,
+    callB:S.flags.callB&&simB(Q.fitUser,Q.exts[0]).ok,
     save:S.flags.saved&&!S.dirty
   };
 }
-const openHints=new Set();
-function renderTasks(){
-  const r=evalTasks(); let n=0; const ol=$('#tasks'); ol.innerHTML='';
-  TASKS.forEach(t=>{
-    const done=!!r[t.id]; if(done) n++;
-    const li=document.createElement('li'); if(done) li.className='done';
-    li.innerHTML=`<span class="box" aria-hidden="true"></span><span class="tt">${t.t}${done?'<span style="position:absolute;left:-9999px">（完成）</span>':''}</span><details ${openHints.has(t.id)?'open':''}><summary>提示</summary><div>${t.h}</div></details>`;
-    li.querySelector('details').addEventListener('toggle',e=>{ e.target.open?openHints.add(t.id):openHints.delete(t.id); });
-    ol.appendChild(li);
-  });
-  $('#prog').textContent=`${n}/${TASKS.length}`;
-  $('#meter').style.width=(n/TASKS.length*100)+'%';
-}
-function setLed(id,s){ $('#'+id).className='led'+(s?' '+s:''); }
 function refresh(){
-  promptEl.textContent=promptStr();
+  $('#prompt').textContent=T.promptStr();
   const L=l1(), g=ds0();
   setLed('ledL1',L.up?(L.warns.length?'warn':'on'):'bad');
   setLed('ledSig',!g?'':(g.ok?(L.up?'on':'warn'):'bad'));
   $('#lblSig').textContent=g?`CAS ${g.type.replace('e&m-','E&M ')}`:'CAS 未設定';
   setLed('ledSave',S.dirty?'warn':'');
   $('#lblSave').textContent=S.dirty?'未存檔':'已存檔';
-  renderTasks();
+  T.renderTasks(TASKS,evalTasks());
 }
-
-/* ---------- input ---------- */
-function analyze(raw){
-  let str=raw, roots=modeRoots(S.mode);
-  const pi=str.indexOf('|'); if(pi>=0){ roots=[K('begin','Begin with the line that matches',[LINE('Regular Expression')]),K('include','Include lines that match',[LINE('Regular Expression')]),K('section','Filter a section of output',[LINE('Regular Expression')])]; str=str.slice(pi+1); }
-  const endsSpace=str.length===0||/\s$/.test(str);
-  const toks=str.trim().split(/\s+/).filter(Boolean);
-  const partial=endsSpace?'':toks.pop();
-  const r=walk(toks,roots);
-  if(r.err) return {err:r.err,i:r.i};
-  if(r.done) return {done:true,children:[],partial:'',runnable:true};
-  const vals=r.vals||[], neg=vals[0]==='no'||(vals[0]==='do'&&vals[1]==='no');
-  return {children:r.node?kids(r.node):roots,partial,runnable:r.node?(!!r.node.run&&(!r.node.nOnly||neg)):false};
-}
-function cands(children,partial){
-  const low=partial.toLowerCase(),set=[];
-  children.forEach(n=>{
-    if(n.t==='k'&&n.k.toLowerCase().startsWith(low)) set.push(n.k);
-    if(n.t==='p'&&n.sug) n.sug().forEach(s=>{ if(s.toLowerCase().startsWith(low)&&!set.includes(s)) set.push(s); });
-  });
-  return set;
-}
-function helpList(children,runnable){
-  const items=children.map(n=>[n.t==='k'?n.k:n.label,n.h||'']); if(runnable) items.push(['<cr>','']);
-  const w=Math.max(4,...items.map(i=>i[0].length));
-  return items.map(([a,b])=>'  '+a.padEnd(w+2)+b).join('\n');
-}
-function caret(raw,idx){
-  const m=[...raw.matchAll(/\S+/g)][idx];
-  print(' '.repeat(promptStr().length+(m?m.index:raw.length))+'^','err');
-  print("% Invalid input detected at '^' marker.");
-}
-function doHelp(){
-  if(S.pending) return;
-  const raw=inp.value; print(promptStr()+raw+'?');
-  const a=analyze(raw);
-  if(a.err==='amb') print(`% Ambiguous command:  "${raw.trim()}"`);
-  else if(a.err) caret(raw,a.i);
-  else if(a.partial){ const c=cands(a.children,a.partial); print(c.length?c.join('  '):'% Unrecognized command'); }
-  else if(!a.children.length&&!a.runnable) print('% Unrecognized command');
-  else print(helpList(a.children,a.runnable));
-  inp.value=raw; scrollDown();
-}
-function doTab(){
-  if(S.pending) return;
-  const raw=inp.value,a=analyze(raw);
-  if(a.err||a.done){ flash(); return; }
-  if(!a.partial){ if(!a.children.length){ flash(); return; } print(promptStr()+raw); print(helpList(a.children,a.runnable)); scrollDown(); return; }
-  const c=cands(a.children,a.partial), base=raw.slice(0,raw.length-a.partial.length);
-  if(c.length===1) inp.value=base+c[0]+' ';
-  else if(c.length>1){
-    let cp=c[0];
-    c.forEach(x=>{ let i=0; while(i<cp.length&&i<x.length&&cp[i].toLowerCase()===x[i].toLowerCase()) i++; cp=cp.slice(0,i); });
-    if(cp.length>a.partial.length) inp.value=base+cp; else { print(promptStr()+raw); print(c.join('  ')); scrollDown(); }
-  } else flash();
-  const n=inp.value.length; inp.setSelectionRange(n,n);
-}
-function applyPipe(text,pipe){
-  const [kw,...rest]=pipe.trim().split(/\s+/), pat=rest.join(' ');
-  const k=['begin','include','section'].find(w=>kw&&w.startsWith(kw.toLowerCase()));
-  if(!k||!pat) return '% Incomplete or invalid filter after |';
-  let re; try{ re=new RegExp(pat); }catch(e){ return '% Invalid regular expression'; }
-  const lines=text.split('\n');
-  if(k==='include') return lines.filter(l=>re.test(l)).join('\n');
-  if(k==='begin'){ const i=lines.findIndex(l=>re.test(l)); return i<0?'':lines.slice(i).join('\n'); }
-  const o=[]; let on=false; lines.forEach(l=>{ if(!/^\s/.test(l)) on=re.test(l); if(on) o.push(l); }); return o.join('\n');
-}
-function execute(raw){
-  let line=raw.trim(); if(!line) return;
-  let pipe=null; const pi=line.indexOf('|'); if(pi>=0){ pipe=line.slice(pi+1); line=line.slice(0,pi).trim(); }
-  const toks=line.split(/\s+/);
-  let r=walk(toks,modeRoots(S.mode));
-  if(r.err&&isSub(S.mode)){ const r2=walk(toks,configRoots()); if(!r2.err&&r2.node&&r2.node.run){ S.mode='config'; S.ctx=null; r=r2; } }
-  if(r.err==='amb'){ print(`% Ambiguous command:  "${line}"`); return; }
-  if(r.err){ caret(raw,r.i); return; }
-  let vals=r.vals,neg=false;
-  if(vals[0]==='do') vals=vals.slice(1);
-  if(vals[0]==='no'){ neg=true; vals=vals.slice(1); }
-  if(!r.node.run||(r.node.nOnly&&!neg)){ print('% Incomplete command.'); return; }
-  const res=r.node.run(vals,{neg});
-  if(typeof res==='string'&&res.length) print(pipe?applyPipe(res,pipe):res);
-}
-function submit(){
-  const v=inp.value; inp.value='';
-  if(S.pending){ const p=S.pending; S.pending=null; print(p.prompt+v); p.handler(v); }
-  else { print(promptStr()+v); if(v.trim()){ S.history.push(v); if(S.history.length>200) S.history.shift(); } S.hidx=S.history.length; execute(v); }
-  refresh(); scrollDown();
-}
-function hist(dir){
-  if(!S.history.length) return;
-  S.hidx=Math.max(0,Math.min(S.history.length,S.hidx+dir));
-  inp.value=S.history[S.hidx]||''; const n=inp.value.length; inp.setSelectionRange(n,n);
-}
-function ctrlZ(){
-  if(S.pending) return;
-  print(promptStr()+inp.value+'^Z'); inp.value='';
-  if(S.mode!=='exec'&&S.mode!=='priv') print(toPriv(),'log');
-  refresh(); scrollDown();
-}
-inp.addEventListener('keydown',e=>{
-  if(e.isComposing) return;
-  if(e.key==='Tab'){ e.preventDefault(); doTab(); }
-  else if(e.key==='?'){ e.preventDefault(); doHelp(); }
-  else if(e.key==='Enter'){ e.preventDefault(); submit(); }
-  else if(e.key==='ArrowUp'){ e.preventDefault(); hist(-1); }
-  else if(e.key==='ArrowDown'){ e.preventDefault(); hist(1); }
-  else if(e.ctrlKey&&(e.key==='z'||e.key==='Z')){ e.preventDefault(); ctrlZ(); }
-  else if(e.ctrlKey&&(e.key==='c'||e.key==='C')&&!String(window.getSelection())){ e.preventDefault(); print(promptStr()+inp.value); inp.value=''; scrollDown(); }
-});
-inp.addEventListener('input',()=>{ const i=inp.value.indexOf('?'); if(i>=0){ inp.value=inp.value.slice(0,i); doHelp(); } });
-screen.addEventListener('click',()=>{ if(!String(window.getSelection())) inp.focus(); });
-document.querySelectorAll('.keys button').forEach(b=>{
-  b.addEventListener('pointerdown',e=>e.preventDefault());
-  b.addEventListener('click',()=>{ const k=b.dataset.k; if(k==='tab') doTab(); else if(k==='?') doHelp(); else if(k==='up') hist(-1); else if(k==='down') hist(1); else if(k==='z') ctrlZ(); else submit(); inp.focus(); });
-});
 
 /* ---------- side panel ---------- */
-document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
-  document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b?'true':'false'));
-  ['tasks','sigma','call'].forEach(id=>$('#tab-'+id).hidden=id!==b.dataset.tab);
-}));
 function renderSigma(){
   $('#sgUriNow').textContent=SG.trunk.trim()?`目前生效：${SG.trunk.trim()}`:'目前生效：（未設定）';
   const tb=$('#raList'); tb.innerHTML='';
@@ -848,33 +681,40 @@ $('#raSave').addEventListener('click',()=>{
   if(SG.routes.some(r=>r.addr===a)){ $('#raMsg').textContent=`${a} 已經存在。`; return; }
   SG.routes.push({addr:a,name:n}); $('#raMsg').textContent=`已新增 ${a}。`; $('#raAddr').value=''; renderSigma(); refresh();
 });
-function renderTrace(title,r){
-  const t=$('#trace'); t.innerHTML='';
-  const p=document.createElement('p'); p.className='tt '+(r.ok?'good':'bad'); p.textContent=`${title}：${r.ok?'成功':'失敗'}`; t.appendChild(p);
-  const ol=document.createElement('ol');
-  r.st.forEach(([k,m])=>{ const li=document.createElement('li'); li.className=k; li.textContent=m; ol.appendChild(li); });
-  t.appendChild(ol);
-  const lines=r.dbg.filter(([k])=>(k==='v'&&S.debug.vpm)||(k==='d'&&S.debug.dp));
-  if(lines.length){ lines.forEach(([,l])=>print(l,'dbg')); scrollDown(); }
-}
+const renderTrace=(title,r)=>T.renderTrace(title,r,k=>(k==='v'&&S.debug.vpm)||(k==='d'&&S.debug.dp));
 $('#btnA').addEventListener('click',()=>{
   const e=$('#aExt').value.trim(), n=$('#aNum').value.trim(), r=simA(e,n);
-  if(r.ok&&n==='900000') S.flags.callA=true;
+  if(r.ok&&n===Q.fitUser) S.flags.callA=true;
   renderTrace(`內線 ${e} 撥 ${n}`,r); refresh();
 });
 $('#btnB').addEventListener('click',()=>{
   const u=$('#bUser').value.trim(), n=$('#bNum').value.trim(), r=simB(u,n);
-  if(r.ok&&n==='360201') S.flags.callB=true;
+  if(r.ok&&n===Q.exts[0]) S.flags.callB=true;
   renderTrace(`FIT-50 ${u} 撥 ${n}`,r); refresh();
 });
-$('#btnReset').addEventListener('click',()=>{ fresh(); out.innerHTML=''; $('#trace').innerHTML=''; $('#sgUri').value=''; $('#raMsg').textContent=''; renderSigma(); welcome(); refresh(); inp.focus(); });
+/* 出新題目：Loopback0 與 SIGMA 位址都由節點編號換算（見 cli-core.js 的 node），題目卡只給編號。
+   FIT-50 用戶是隨機 6 碼（不以 0、3 開頭，避開 SIGMA 的 3602 內線），SIGMA 內線是 3602 開頭的連號 */
+function newQuiz(){
+  const {rnd,pad,node}=CliCore, e=rnd(1,98), code=node.pick();
+  Q={code,loop:node.loop(code),sigma:node.voip(code),fitUser:'12456789'[rnd(0,7)]+pad(rnd(0,99999),5),exts:['3602'+pad(e,2),'3602'+pad(e+1,2)]};
+  $('#aExt').value=Q.exts[0]; $('#aNum').value=Q.fitUser; $('#bUser').value=Q.fitUser; $('#bNum').value=Q.exts[0];
+  $('#sigExts').textContent=Q.exts.join('、'); $('#fitUserNote').textContent=Q.fitUser;
+  T.renderQuiz('按下方「重設練習」會換一組',[
+    ['節點編號',Q.code],
+    ['T1 0/1/0',['framing esf、linecode b8zs','clock source line primary','cablelength short 110','ds0-group 1，timeslots 1-24','信令 E&M wink-start']],
+    ['SIGMA',['SIP over UDP','codec g711ulaw、dtmf-relay rtp-nte、no vad','內線 '+Q.exts.join('、')]],
+    ['FIT-50 用戶',Q.fitUser]
+  ]);
+}
+$('#btnReset').addEventListener('click',()=>{ fresh(); newQuiz(); T.clear(); $('#sgUri').value=''; $('#raMsg').textContent=''; renderSigma(); welcome(); refresh(); T.focus(); });
 function welcome(){
   print('LAB-RTR-B 模擬器：CN 與 FIT-50 介接（T1 CAS）','dim');
   print('Tab 補齊指令或列出選項，? 查看可用參數，↑↓ 叫出歷史指令，Ctrl+Z 回到特權模式。','dim');
+  print('卡住時按下方的「提示」或輸入 hint，每多按一次會說得更具體。','hint');
   print('controller T1 0/1/0 目前是出廠預設值，dial-peer 也還沒建立。先輸入 enable 開始。\n','dim');
 }
-welcome(); renderSigma(); refresh();
-inp.focus({preventScroll:true});
+newQuiz(); welcome(); renderSigma(); refresh();
+T.focus({preventScroll:true});
 })();
 </script>
 </body>

@@ -60,13 +60,15 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font
 #out .err{color:var(--err)}
 #out .dbg{color:var(--dbg)}
 #out .log{color:var(--term-dim)}
+#out .hint{color:var(--ok)}
 .inline{display:flex;align-items:baseline}
 #prompt{white-space:pre;color:var(--prompt)}
 #cmd{flex:1;min-width:40px;background:transparent;border:0;outline:0;color:var(--term-ink);font:inherit;padding:0;caret-color:var(--prompt)}
-.keys{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:#000;border-top:1px solid #000}
+.keys{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#000;border-top:1px solid #000}
 .keys button{font-family:var(--mono);font-size:13px;padding:11px 4px;background:var(--term-bar);color:var(--term-ink);border:0;cursor:pointer}
 .keys button:active{background:#33403a}
 .keys button:focus-visible{outline:2px solid var(--prompt);outline-offset:-2px}
+.keys button.hintkey{color:var(--ok);font-family:var(--sans);font-weight:700}
 
 /* side */
 .side{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
@@ -89,6 +91,15 @@ ol.tasks .box::before{content:counter(t)}
 ol.tasks li.done .box{background:var(--olive);border-color:var(--olive);color:var(--olive-ink)}
 ol.tasks li.done .box::before{content:"✓";font-size:13px}
 ol.tasks li.done .tt{color:var(--muted)}
+ol.tasks li.now .box{border-color:var(--amber);color:var(--amber);border-width:2px}
+ol.tasks li.now .tt{font-weight:700}
+.quiz{border:1px solid var(--line);border-left:4px solid var(--amber);border-radius:6px;padding:10px 12px;margin-bottom:14px;background:var(--bg)}
+.quiz:empty{display:none}
+.quiz h2{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 10px;font-size:.95rem;margin:0 0 6px}
+.quiz h2 small{font-weight:400;font-size:.78rem;color:var(--muted)}
+.quiz dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0;font-size:.86rem}
+.quiz dt{color:var(--muted)}
+.quiz dd{margin:0;font-family:var(--mono);overflow-wrap:anywhere}
 ol.tasks details{grid-column:2;font-size:.85rem;color:var(--muted)}
 ol.tasks summary{cursor:pointer;width:max-content}
 ol.tasks code,.pane code{font-family:var(--mono);font-size:.82rem;background:rgba(127,140,120,.16);padding:1px 4px;border-radius:3px}
@@ -148,6 +159,7 @@ input.t{font-family:var(--mono)}
         <button data-k="up">↑</button>
         <button data-k="down">↓</button>
         <button data-k="z">Ctrl+Z</button>
+        <button data-k="hint" class="hintkey">提示</button>
         <button data-k="enter">Enter</button>
       </div>
     </section>
@@ -160,6 +172,7 @@ input.t{font-family:var(--mono)}
       </div>
 
       <div class="pane" id="tab-tasks">
+        <section class="quiz" id="quiz" aria-label="題目"></section>
         <div class="progress"><div class="meter"><i id="meter"></i></div><span id="prog">0/10</span></div>
         <ol class="tasks" id="tasks"></ol>
       </div>
@@ -172,7 +185,7 @@ input.t{font-family:var(--mono)}
 
         <h3>內線打出去</h3>
         <div class="row">
-          <div><label class="f" for="outExt">發話內線</label><input class="t" id="outExt" value="654321"></div>
+          <div><label class="f" for="outExt">發話內線</label><input class="t" id="outExt"></div>
           <div><label class="f" for="outNum">撥打號碼</label><input class="t" id="outNum" value="0912345678"></div>
         </div>
         <div class="chips">
@@ -210,7 +223,7 @@ input.t{font-family:var(--mono)}
         <h3>DID 號碼對照</h3>
         <ul class="did" id="didList"></ul>
         <label class="f" for="cExt">XRI-400 上存在的內線</label>
-        <input class="t" id="cExt" value="654321, 654322, 654323, 654324, 654325, 360500">
+        <input class="t" id="cExt">
 
         <div class="row">
           <button class="btn" id="btnRandom">隨機出題</button>
@@ -222,16 +235,13 @@ input.t{font-family:var(--mono)}
   </main>
 </div>
 
+<script src="cli-core.js"></script>
 <script>
 (function(){
 'use strict';
-const $=s=>document.querySelector(s);
-const out=$('#out'), inp=$('#cmd'), promptEl=$('#prompt'), screen=$('#screen');
-const clone=o=>JSON.parse(JSON.stringify(o));
+const {$,clone,ts,K,NUM,WORD,LINE,isIp,isDial,sortK,forward,fwdDesc}=CliCore;
 
-const DIDS=['6612001','6612002','6612003','6612004','6612005'];
-const TARGETS=['654321','654322','654323','654324','654325'];
-const XRI_IP='10.10.6.124';
+let DIDS, TARGETS, NODE, XRI_IP;   // 題目：五個 DID 與對應內線、節點編號與換算出的 XRI-400 位址，rollQuiz() 產生
 const SW=['primary-4ess','primary-5ess','primary-dms100','primary-net5','primary-ni','primary-ntt','primary-qsig'];
 const SWH={'primary-4ess':'Lucent 4ESS switch type for the U.S.','primary-5ess':'Lucent 5ESS switch type for the U.S.','primary-dms100':'Northern Telecom DMS-100 switch type for the U.S.','primary-net5':'NET5 switch type for UK, Europe, Asia and Australia','primary-ni':'National ISDN Switch type for the U.S.','primary-ntt':'NTT switch type for Japan','primary-qsig':'QSIG switch type'};
 
@@ -265,87 +275,22 @@ function freshState(){
   S={cfg, startup:clone(cfg), hw:'e1', dirty:false, mode:'exec', ctx:null, debug:{q931:false,trans:false}, history:[], hidx:0, pending:null, flags:{conf:false,test:false,saved:false}};
 }
 function freshCarrier(){ C={line:'e1', e1framing:'crc4', t1framing:'esf', t1linecode:'b8zs', sw:'primary-net5', digits:'7', hidden:false}; }
-freshState(); freshCarrier();
-const mark=()=>{S.dirty=true;};
+rollQuiz(); freshState(); freshCarrier();
 const dchan=()=>'0/1/0:'+(S.hw==='e1'?'15':'23');
 
-/* ---------- output ---------- */
-function print(text,cls){
-  String(text).split('\n').forEach(l=>{
-    const d=document.createElement('div');
-    let c=cls; if(!c && /^% /.test(l)) c='err';
-    if(c) d.className=c; d.textContent=l; out.appendChild(d);
-  });
-  while(out.childNodes.length>2500) out.removeChild(out.firstChild);
-}
-function scrollDown(){ screen.scrollTop=screen.scrollHeight; }
-function flash(){ screen.classList.remove('flash'); void screen.offsetWidth; screen.classList.add('flash'); }
-function ts(){
-  const d=new Date(), M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
-  const p=(n,l=2)=>String(n).padStart(l,'0');
-  return `*${M} ${String(d.getDate()).padStart(2,' ')} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(),3)}:`;
-}
-
-/* ---------- grammar helpers ---------- */
-const K=(k,h,c,run,o)=>Object.assign({t:'k',k,h,c:c||[],run},o||{});
-const NUM=(min,max,h,c,run,o)=>Object.assign({t:'p',type:'num',min,max,label:`<${min}-${max}>`,h,c:c||[],run},o||{});
-const WORD=(label,h,c,run,v,o)=>Object.assign({t:'p',type:'word',label,h,c:c||[],run,v},o||{});
-const LINE=(h,run)=>({t:'p',type:'line',label:'LINE',h,c:[],run});
-const kids=n=>typeof n.c==='function'?n.c():(n.c||[]);
-const isIp=t=>/^\d{1,3}(\.\d{1,3}){3}$/.test(t);
 const isPat=t=>/^\/.*\/$/.test(t)&&t.length>=2;
-const isDial=t=>/^[0-9.\[\]\-T*#+%?,]+$/i.test(t);
-const sortK=l=>l.sort((a,b)=>(a.k||a.label).localeCompare(b.k||b.label));
+const fix=s=>s.replace(/^(\s*(?:do\s+)?(?:no\s+)?int[a-z]*\s+)(se[a-z]*)(\d)/i,'$1$2 $3');
 
-function accepts(p,tok){
-  if(p.type==='num') return /^\d+$/.test(tok)&&+tok>=p.min&&+tok<=p.max;
-  if(p.type==='line') return true;
-  return p.v?p.v(tok):true;
-}
-function matchTok(children,tok){
-  const low=tok.toLowerCase();
-  const kws=children.filter(n=>n.t==='k'&&n.k.toLowerCase().startsWith(low));
-  const ex=kws.find(n=>n.k.toLowerCase()===low);
-  if(ex) return {node:ex};
-  const ps=children.filter(n=>n.t==='p'&&accepts(n,tok));
-  if(kws.length===1) return {node:kws[0]};
-  if(kws.length>1) return {amb:true};
-  if(ps.length) return {node:ps[0]};
-  return {bad:true};
-}
-function walk(tokens,roots){
-  let children=roots,node=null; const vals=[];
-  for(let i=0;i<tokens.length;i++){
-    const m=matchTok(children,tokens[i]);
-    if(m.amb) return {err:'amb',i};
-    if(m.bad) return {err:'bad',i};
-    node=m.node;
-    if(node.t==='p'&&node.type==='line'){ vals.push(tokens.slice(i).join(' ')); return {node,vals,done:true}; }
-    vals.push(node.t==='k'?node.k:tokens[i]);
-    children=kids(node);
-  }
-  return {node,vals};
-}
-const fix=s=>s.replace(/(^|\s)(se[a-z]*)(\d)/ig,'$1$2 $3');
+const T=CliCore.createTerminal({
+  state:()=>S, refresh:()=>refresh(), fix,
+  doneHint:'全部任務都完成了。可以到「電信端」分頁按「隨機出題」，在看不到電信端參數的情況下再練一次。',
+  modes:{exec:{roots:execRoots,prompt:'>'},priv:{roots:privRoots,prompt:'#'},config:{roots:configRoots,prompt:'(config)#'},ctl:{roots:ctlRoots,prompt:'(config-controller)#'},if:{roots:ifRoots,prompt:'(config-if)#'},rule:{roots:ruleRoots,prompt:'(cfg-translation-rule)#'},prof:{roots:profRoots,prompt:'(cfg-translation-profile)#'},vp:{roots:vpRoots,prompt:'(config-voiceport)#'},dp:{roots:dpRoots,prompt:'(config-dial-peer)#'}}
+});
+const {print,mark,withCommon,enterConfig,toPriv,logout,enterDP,doSave,save,copyRun,setLed}=T;
+const operational=d=>CliCore.operational(S.cfg,d);
+const bestPeer=num=>CliCore.bestPeer(S.cfg,num);
 
 /* ---------- mode trees ---------- */
-function commonCfg(){ return [
-  K('do','To run exec commands in config mode',()=>privRoots()),
-  K('end','Exit from configure mode',null,()=>toPriv()),
-  K('exit','Exit from current mode',null,()=>exitMode())
-];}
-function withCommon(list){
-  return sortK(list.concat(commonCfg(),[K('no','Negate a command or set its defaults',()=>list)]));
-}
-function modeRoots(m){
-  return ({exec:execRoots,priv:privRoots,config:configRoots,ctl:ctlRoots,if:ifRoots,rule:ruleRoots,prof:profRoots,vp:vpRoots,dp:dpRoots})[m]();
-}
-const isSub=m=>['ctl','if','rule','prof','vp','dp'].includes(m);
-function promptStr(){
-  if(S.pending) return S.pending.prompt;
-  return S.cfg.hostname+({exec:'>',priv:'#',config:'(config)#',ctl:'(config-controller)#',if:'(config-if)#',rule:'(cfg-translation-rule)#',prof:'(cfg-translation-profile)#',vp:'(config-voiceport)#',dp:'(config-dial-peer)#'})[S.mode];
-}
-
 function showRoots(priv){
   const units=()=>['0/1/0','0/1/1','0/1/2','0/1/3'];
   const l=[
@@ -484,52 +429,27 @@ function dpRoots(){
   const dp=()=>S.cfg.dialPeers.find(d=>d.tag===S.ctx.tag);
   const del=k=>(v,x)=>{ delete dp()[k]; mark(); };
   const prof=k=>(v,x)=>{ if(x.neg) delete dp()[k]; else dp()[k]=v[2]; mark(); };
+  const n=T.dialPeerNodes(dp,'07[2-9]......');
   const l=[
-    K('description','A string describing this dial-peer',[LINE('Up to 64 characters',(v,x)=>{ if(x.neg) delete dp().desc; else dp().desc=v[1]; mark(); })],del('desc'),{nOnly:true}),
-    K('destination-pattern','A full E.164 telephone number prefix',[WORD('WORD','A dial-peer destination pattern, e.g. 07[2-9]......',null,(v,x)=>{ if(x.neg) delete dp().dest; else dp().dest=v[1]; mark(); },isDial)],del('dest'),{nOnly:true}),
+    n.description,
+    n.destination,
     K('incoming','The number to match on incoming calls',[K('called-number','Called number to match on incoming calls',[WORD('WORD','A called number pattern',null,(v,x)=>{ if(x.neg) delete dp().incoming; else dp().incoming=v[2]; mark(); },isDial)],del('incoming'),{nOnly:true})]),
     K('translation-profile','Translation profile',[
       K('incoming','Translation profile for incoming call',[WORD('WORD','Translation profile name',null,prof('profIn'),null,{sug:()=>Object.keys(S.cfg.profiles)})],del('profIn'),{nOnly:true}),
       K('outgoing','Translation profile for outgoing call',[WORD('WORD','Translation profile name',null,prof('profOut'),null,{sug:()=>Object.keys(S.cfg.profiles)})],del('profOut'),{nOnly:true})
     ])
   ];
-  if(dp().type==='pots'){
-    l.push(
-      K('forward-digits','Number of digits to be forwarded',[K('all','Forward all digits',null,(v,x)=>{ if(x.neg) delete dp().fwd; else dp().fwd='all'; mark(); }),NUM(0,32,'Number of digits to forward',null,(v,x)=>{ if(x.neg) delete dp().fwd; else dp().fwd=v[1]; mark(); })],del('fwd'),{nOnly:true}),
-      K('port','Voice port',[WORD('<slot/subunit/port>','Voice port',null,(v,x)=>{ if(x.neg) delete dp().port; else dp().port=v[1]; mark(); },t=>!!S.cfg.voicePorts[t],{sug:()=>Object.keys(S.cfg.voicePorts)})],del('port'),{nOnly:true})
-    );
-  } else {
-    l.push(K('session','Specify session parameters',[
-      K('protocol','The session protocol to be used',[K('sipv2','IETF Session Initiation Protocol',null,(v,x)=>{ if(x.neg) delete dp().proto; else dp().proto='sipv2'; mark(); })],del('proto'),{nOnly:true}),
-      K('target','Specify session target',[WORD('WORD','ipv4:A.B.C.D',null,(v,x)=>{ if(x.neg) delete dp().target; else dp().target=v[2]; mark(); },t=>/^ipv4:\d{1,3}(\.\d{1,3}){3}$/.test(t))],del('target'),{nOnly:true}),
-      K('transport','Set the session transport',[K('tcp','TCP transport',null,(v,x)=>{dp().transport='tcp'; mark();}),K('udp','UDP transport',null,(v,x)=>{dp().transport='udp'; mark();})])
-    ]));
-  }
+  if(dp().type==='pots') l.push(n.forwardDigits,n.port);
+  else l.push(n.session);
   return withCommon(l);
 }
-function pipeRoots(){ return [
-  K('begin','Begin with the line that matches',[LINE('Regular Expression',null)]),
-  K('include','Include lines that match',[LINE('Regular Expression',null)]),
-  K('section','Filter a section of output',[LINE('Regular Expression',null)])
-];}
 
 /* ---------- mode actions ---------- */
-function enterConfig(){ S.mode='config'; S.ctx=null; S.flags.conf=true; return 'Enter configuration commands, one per line.  End with CNTL/Z.'; }
-function toPriv(){ S.mode='priv'; S.ctx=null; return ts()+' %SYS-5-CONFIG_I: Configured from console by console'; }
-function exitMode(){ if(S.mode==='config') return toPriv(); S.mode='config'; S.ctx=null; }
-function logout(){ S.mode='exec'; S.ctx=null; return `\n${S.cfg.hostname} con0 is now available\n\nPress RETURN to get started.`; }
 function enterCtl(name){ S.mode='ctl'; S.ctx={type:S.hw,name}; }
 function enterIf(name,x){ if(x.neg) return '% Removal of channelized serial interfaces is not supported; use "no pri-group" on the controller'; S.mode='if'; S.ctx={name}; }
 function enterRule(id,x){ if(x.neg){ delete S.cfg.rules[id]; mark(); return; } if(!S.cfg.rules[id]){ S.cfg.rules[id]={}; mark(); } S.mode='rule'; S.ctx={id}; }
 function enterProf(name,x){ if(x.neg){ delete S.cfg.profiles[name]; mark(); return; } if(!S.cfg.profiles[name]){ S.cfg.profiles[name]={}; mark(); } S.mode='prof'; S.ctx={name}; }
 function enterVP(name,x){ if(x.neg) return '% Voice ports cannot be removed'; S.mode='vp'; S.ctx={name}; }
-function enterDP(tag,type,x){
-  const ex=S.cfg.dialPeers.find(d=>d.tag===tag);
-  if(x.neg){ if(!ex) return `% Dial-peer ${tag} does not exist`; S.cfg.dialPeers=S.cfg.dialPeers.filter(d=>d.tag!==tag); mark(); return; }
-  if(ex&&ex.type!==type) return `% Dial-peer ${tag} already exists as type ${ex.type}`;
-  if(!ex){ S.cfg.dialPeers.push({tag,type}); mark(); }
-  S.mode='dp'; S.ctx={tag};
-}
 function setCard(v,x){
   const t=v[2], slot=v[3], bay=v[4];
   if(slot!=='0'||bay!=='1') return `% No module present in slot ${slot}/${bay}`;
@@ -555,14 +475,6 @@ function removePri(){
   if(!c.pri) return; c.pri=null;
   const dn=ctl+':'+(t==='e1'?'15':'23');
   delete S.cfg.serials[dn]; delete S.cfg.voicePorts[dn]; mark();
-}
-function doSave(){ S.startup=clone(S.cfg); S.dirty=false; S.flags.saved=true; }
-function save(){ doSave(); return 'Building configuration...\n[OK]'; }
-function copyRun(){
-  S.pending={prompt:'Destination filename [startup-config]? ',handler:a=>{
-    const t=a.trim(); if(t===''||t==='startup-config'){ doSave(); print('Building configuration...\n[OK]'); }
-    else print('% The simulator only supports startup-config');
-  }};
 }
 function reloadCmd(){
   const proceed=()=>{ S.pending={prompt:'Proceed with reload? [confirm]',handler:a=>{ const t=a.trim(); if(t===''||/^y/i.test(t)) doReload(); }}; };
@@ -612,41 +524,6 @@ function applyRules(id,num){
     if(re.test(num)) return {rule:k,out:num.replace(re,ciscoRepl(r.r)),m:r.m,r:r.r};
   }
   return {rule:null,out:num};
-}
-function patInfo(p){
-  let r='^',score=0;
-  for(let i=0;i<p.length;i++){
-    const ch=p[i];
-    if(/[0-9*#]/.test(ch)){ r+=ch==='*'?'\\*':ch; score+=10; }
-    else if(ch==='.'){ r+='\\d'; score+=1; }
-    else if(ch==='['){ const j=p.indexOf(']',i); if(j<0) return null; r+=p.slice(i,j+1); score+=5; i=j; }
-    else if(ch==='T'||ch==='t'){ r+='\\d*'; }
-    else if(ch==='+'){ r+='+'; }
-    else if(ch===','){ }
-    else return null;
-  }
-  try{ return {re:new RegExp(r+'$'),score}; }catch(e){ return null; }
-}
-const operational=d=>!!d.dest&&(d.type==='voip'?!!d.target:(!!d.port&&!!S.cfg.voicePorts[d.port]));
-function bestPeer(num){
-  let best=null;
-  for(const d of S.cfg.dialPeers){
-    if(!operational(d)) continue;
-    const pi=patInfo(d.dest); if(!pi||!pi.re.test(num)) continue;
-    if(!best||pi.score>best.score) best={d,score:pi.score};
-  }
-  return best&&best.d;
-}
-function forward(d,num){
-  if(d.fwd==='all') return num;
-  if(d.fwd!=null) return num.slice(-Number(d.fwd)||num.length) ;
-  const lit=(d.dest.match(/^\d+/)||[''])[0].length; return num.slice(lit);
-}
-function fwdDesc(d){
-  if(d.fwd==='all') return 'forward-digits all，送完整號碼';
-  if(d.fwd!=null) return `forward-digits ${d.fwd}，只送最後 ${d.fwd} 碼`;
-  const lit=(d.dest.match(/^\d+/)||[''])[0];
-  return lit?`沒有設定 forward-digits，預設去掉明確比對的前置碼 ${lit}`:'沒有設定 forward-digits';
 }
 
 /* ---------- line status ---------- */
@@ -772,8 +649,8 @@ function showIsdn(){
   return s;
 }
 function showRule(v){
-  const ids=v[2]?[v[2]]:Object.keys(S.cfg.rules).sort((a,b)=>a-b);
-  if(v[2]&&!S.cfg.rules[v[2]]) return `% Translation rule ${v[2]} does not exist`;
+  const ids=v[3]?[v[3]]:Object.keys(S.cfg.rules).sort((a,b)=>a-b);
+  if(v[3]&&!S.cfg.rules[v[3]]) return `% Translation rule ${v[3]} does not exist`;
   return ids.map(id=>{
     const L=[`Translation-rule tag: ${id}`];
     Object.keys(S.cfg.rules[id]).sort((a,b)=>a-b).forEach(n=>{
@@ -783,13 +660,7 @@ function showRule(v){
     return L.join('\n');
   }).join('\n\n');
 }
-function showDP(){
-  const L=['TAG        TYPE  OPER  DEST-PATTERN          FWD   SESS-TARGET              PORT'];
-  S.cfg.dialPeers.forEach(d=>{
-    L.push(d.tag.padEnd(11)+d.type.padEnd(6)+(operational(d)?'up':'down').padEnd(6)+(d.dest||'').padEnd(22)+(d.type==='pots'?(d.fwd==null?'def':d.fwd):'').padEnd(6)+(d.target||'').padEnd(25)+(d.port||''));
-  });
-  return L.join('\n');
-}
+function showDP(){ return T.showDP(22); }
 function showDebug(){
   const L=[];
   if(S.debug.q931) L.push('ISDN:','  ISDN Q931 packets debugging is on');
@@ -909,16 +780,63 @@ const TASKS=[
   {id:'l2',t:'ISDN Layer 2 建立',h:()=>'<code>show isdn status</code> 要看到 MULTIPLE_FRAME_ESTABLISHED。D 通道需要 pri-group，Serial 介面不能 shutdown。'},
   {id:'sw',t:'D 通道的 switch-type 和電信端一致',h:()=>'<code>interface Serial'+dchan()+'</code> 底下 <code>isdn switch-type primary-net5</code>。介面設定會覆蓋全域設定。'},
   {id:'in',t:'Serial 介面把來電當成語音處理',h:()=>'<code>interface Serial'+dchan()+'</code> 底下 <code>isdn incoming-voice voice</code>。'},
-  {id:'did',t:'5 個 DID 號碼都響到對應的內線',h:()=>'<code>voice translation-rule 50</code> 加一對一規則，例如 <code>rule 2 /^6612001$/ /654321/</code>。中華電信送幾碼，用模擬來電加 <code>debug isdn q931</code> 看 Called Party Number。voice-port '+dchan()+' 也要套用 <code>translation-profile incoming PRI</code>。'},
+  {id:'did',t:'5 個 DID 號碼都響到對應的內線',h:()=>'<code>voice translation-rule 50</code> 加一對一規則，例如 <code>rule 2 /^'+DIDS[0]+'$/ /'+TARGETS[0]+'/</code>。中華電信送幾碼，用模擬來電加 <code>debug isdn q931</code> 看 Called Party Number。voice-port '+dchan()+' 也要套用 <code>translation-profile incoming PRI</code>。'},
   {id:'local',t:'內線能撥本區市話 07-7654321（只送 7 碼）',h:()=>'<code>dial-peer voice 7 pots</code>，<code>destination-pattern 07[2-9]......</code>、<code>port '+dchan()+'</code>、<code>forward-digits 7</code>。'},
   {id:'ld',t:'內線能撥外縣市市話 02-2345-6789（送完整號碼）',h:()=>'<code>dial-peer voice 8 pots</code>，<code>destination-pattern 0[2-8]T</code>、<code>port '+dchan()+'</code>、<code>forward-digits all</code>。'},
   {id:'dp518',t:'刪除沒有 port 的 dial-peer 518',h:()=>'<code>no dial-peer voice 518 pots</code>'},
-  {id:'test',t:'用 test voice translation-rule 驗證號碼',h:()=>'特權模式 <code>test voice translation-rule 50 6612001</code>，在設定模式要在前面加 <code>do</code>。'},
+  {id:'test',t:'用 test voice translation-rule 驗證號碼',h:()=>'特權模式 <code>test voice translation-rule 50 '+DIDS[0]+'</code>，在設定模式要在前面加 <code>do</code>。'},
   {id:'save',t:'存檔',h:()=>'<code>write memory</code> 或 <code>copy running-config startup-config</code>。'}
 ];
+/* 分三層的提示：a 方向、b 用哪個指令、c 完整指令。見 cli-core.js 的 createTerminal 說明 */
+const failOf=r=>(r.st.filter(([k])=>k==='x').pop()||['',''])[1];
+const atCtl=()=>({mode:'ctl',enter:'controller '+S.hw.toUpperCase()+' 0/1/0',at:c=>c&&c.name==='0/1/0'});
+const atSer=()=>({mode:'if',enter:'interface Serial'+dchan(),at:c=>c&&c.name===dchan()});
+const atDp=(tag,type)=>({mode:'dp',enter:`dial-peer voice ${tag} ${type}`,at:c=>c&&c.tag===tag});
+const needPri=()=>({where:atCtl(),a:'show isdn status 看不到 D 通道，表示 controller 還沒有 pri-group。',b:'到 controller 底下設定 pri-group timeslots，D 通道（Serial 介面）會自動產生。',c:[`pri-group timeslots ${S.hw==='e1'?'1-31':'1-24'}`]});
+const HINTS={
+  conf:()=>({where:{mode:'config'},a:'要先進入設定模式，才能修改路由器的設定。',b:'enable 進入特權模式（提示字元變成 #），再用 configure terminal 進入設定模式。',c:['照上面的順序輸入。configure terminal 可以縮寫成 conf t，提示字元變成 (config)# 就完成了。']}),
+  l1:()=>{
+    if(C.line!==S.hw){
+      if(S.cfg.cardType===C.line) return {where:{mode:'priv'},a:`介面卡類型已經改成 ${C.line.toUpperCase()}，但還沒生效。`,b:'card type 要存檔後 reload 才會生效。',c:['write memory','reload']};
+      return {where:{mode:'config'},a:`電信端的線路是 ${C.line.toUpperCase()}，介面卡卻是 ${S.hw.toUpperCase()}，類型不同線路不會起來。`,b:'用 card type 換介面卡類型，要先刪掉原本的設定，存檔再 reload 才會生效。',c:[`no card type ${S.hw} 0 1`,`card type ${C.line} 0 1`,'end','write memory','reload']};
+    }
+    const L=l1(), T1=S.hw==='t1';
+    if(!L.up) return {where:atCtl(),a:`controller 有告警，線路沒起來。先用 show controllers ${S.hw} 0/1/0 看是什麼告警。`,b:'告警是 loss of frame 或 loss of multiframe，通常是 framing 跟電信端不一致。到 controller 底下改 framing，打 framing ? 看有哪些選項。',
+      c:C.hidden&&!T1?['電信端參數目前隱藏。framing 只有 crc4 和 no-crc4 兩種，兩種都試試看，每改一次就用 do show controllers e1 0/1/0 看告警有沒有消失。']:[`framing ${T1?C.t1framing:C.e1framing}`]};
+    if(L.warns.includes('linecode')) return {where:atCtl(),a:'線路起來了，但 show controllers 看到很多 Line Code Violations。',b:'linecode 跟電信端不一致，到 controller 底下改 linecode。',c:[`linecode ${T1?C.t1linecode:'hdb3'}`]};
+    return {where:atCtl(),a:'線路起來了，但 show controllers 看到 Slip Secs，表示時脈不同步。',b:'時脈要從電信端取，到 controller 底下改 clock source。',c:['clock source line primary']};
+  },
+  l2:()=>{
+    const iz=isdnState();
+    if(!iz.exists) return needPri();
+    if(iz.ser.shut) return {where:atSer(),a:`D 通道介面 Serial${dchan()} 被 shutdown 了。`,b:'到 Serial 介面底下取消 shutdown。',c:['no shutdown']};
+    return {where:atCtl(),a:'ISDN Layer 2 要等 Layer 1 起來。先讓 controller 沒有告警。',b:`用 show controllers ${S.hw} 0/1/0 看告警。`};
+  },
+  sw:()=>isdnState().exists?{where:atSer(),a:'D 通道的 ISDN switch-type 要跟電信端一致。show isdn status 可以看到介面目前用哪一種。',b:`到 interface Serial${dchan()} 底下設定 isdn switch-type，介面上的設定會蓋過全域設定。電信端用哪一種寫在右側「電信端」分頁。`,c:[`isdn switch-type ${C.sw}`]}:needPri(),
+  in:()=>isdnState().exists?{where:atSer(),a:'電話打進來時，Serial 介面預設不一定會當成語音，可能被當成數據通話。',b:'到 Serial 介面底下設定 isdn incoming-voice，讓來電走語音流程。',c:['isdn incoming-voice voice']}:needPri(),
+  did:()=>{
+    const vp=S.cfg.voicePorts[dchan()];
+    if(!vp||vp.incoming!=='PRI') return {where:{mode:'vp',enter:'voice-port '+dchan(),at:c=>c&&c.name===dchan()},a:'外線打進來的號碼，要先經過 voice-port 上的 translation-profile 轉換。',b:`voice-port ${dchan()} 要套用 incoming 方向的 translation-profile PRI。`,c:['translation-profile incoming PRI']};
+    const i=Math.max(0,DIDS.findIndex((_,k)=>{ const r=simIn(k); return !(r.ok&&r.ext===TARGETS[k]); }));
+    const r=simIn(i), why=failOf(r)||`響到 ${r.ext}，不是內線 ${TARGETS[i]}`;
+    const pre=d=>C.digits==='9'?'07'+d:C.digits==='4'?d.slice(-4):d;
+    const rules=DIDS.map((d,k)=>`rule ${k+2} /^${pre(d)}$/ /${TARGETS[k]}/`);
+    return {where:{mode:'rule',enter:'voice translation-rule 50',at:c=>c&&c.id==='50'},
+      a:'電信端送來的 DID 號碼，要用 translation-rule 轉成對應的內線號碼。可以到右側「模擬通話」撥一通，看卡在哪一步。',
+      b:`在 voice translation-rule 50 裡，每個 DID 加一條 rule。電信端送幾碼，可以開 debug isdn q931 再模擬撥入，看 Called Party Number。目前 07-${DIDS[i]} 失敗：${why}`,
+      c:C.hidden?['電信端送幾碼目前隱藏，先用 debug isdn q931 確認。下面以送 7 碼為例：',...DIDS.map((d,k)=>`rule ${k+2} /^${d}$/ /${TARGETS[k]}/`)]:rules};
+  },
+  local:()=>{ const r=simOut(TARGETS[0],'077654321'); return {where:atDp('7','pots'),a:'內線撥 07-7654321，路由器要有 dial-peer 把它從 PRI 送出去，而且只送 7 碼。到「模擬通話」撥一通看看。',b:`建立一個 POTS dial-peer，設定 destination-pattern、port、forward-digits。目前撥這個號碼的結果：${r.ok?'送出 '+r.sent:failOf(r)}`,c:['destination-pattern 07[2-9]......','port '+dchan(),'forward-digits 7']}; },
+  ld:()=>{ const r=simOut(TARGETS[0],'0223456789'); return {where:atDp('8','pots'),a:'內線撥 02-2345-6789，路由器要有 dial-peer 把它從 PRI 送出去，而且要送完整號碼。',b:`建立一個 POTS dial-peer，destination-pattern 要涵蓋外縣市區碼，forward-digits 要送全部。目前撥這個號碼的結果：${r.ok?'送出 '+r.sent:failOf(r)}`,c:['destination-pattern 0[2-8]T','port '+dchan(),'forward-digits all']}; },
+  dp518:()=>({where:{mode:'config'},a:'dial-peer 518 沒有設定 port，是沒有用的設定。show dial-peer voice summary 可以看到它的 OPER 是 down。',b:'在設定模式，用 no 加上建立 dial-peer 的指令把它刪掉。',c:['no dial-peer voice 518 pots']}),
+  test:()=>({where:{mode:'priv'},a:'translation-rule 改好後，可以不打電話，直接測試號碼會被轉成什麼。',b:'用 test voice translation-rule，後面接規則編號和要測的號碼。在設定模式要在前面加 do。',c:['test voice translation-rule 50 '+DIDS[0]]}),
+  save:()=>({where:{mode:'priv'},a:'設定還沒存檔，重開機就會不見。',b:'在特權模式把 running-config 存到 startup-config。',c:['write memory（或 copy running-config startup-config）']})
+};
+TASKS.forEach(t=>{ t.g=HINTS[t.id]; });
+
 function evalTasks(){
   const iz=isdnState(), L1=l1();
-  const loc=simOut('654321','077654321'), ld=simOut('654321','0223456789');
+  const loc=simOut(TARGETS[0],'077654321'), ld=simOut(TARGETS[0],'0223456789');
   return {
     conf:S.flags.conf,
     l1:L1.up&&!L1.warns.length,
@@ -933,25 +851,10 @@ function evalTasks(){
     save:S.flags.saved&&!S.dirty
   };
 }
-const openHints=new Set();
-function renderTasks(){
-  const r=evalTasks(); let n=0;
-  const ol=$('#tasks'); ol.innerHTML='';
-  TASKS.forEach(t=>{
-    const done=!!r[t.id]; if(done) n++;
-    const li=document.createElement('li'); if(done) li.className='done';
-    li.innerHTML=`<span class="box" aria-hidden="true"></span><span class="tt">${t.t}${done?'<span class="sr" style="position:absolute;left:-9999px">（完成）</span>':''}</span><details ${openHints.has(t.id)?'open':''}><summary>提示</summary><div>${t.h()}</div></details>`;
-    li.querySelector('details').addEventListener('toggle',e=>{ e.target.open?openHints.add(t.id):openHints.delete(t.id); });
-    ol.appendChild(li);
-  });
-  $('#prog').textContent=`${n}/${TASKS.length}`;
-  $('#meter').style.width=(n/TASKS.length*100)+'%';
-}
 
 /* ---------- refresh ---------- */
-function setLed(id,s){ const e=$('#'+id); e.className='led'+(s?' '+s:''); }
 function refresh(){
-  promptEl.textContent=promptStr();
+  $('#prompt').textContent=T.promptStr();
   const L1=l1(), iz=isdnState();
   setLed('ledL1',L1.up?(L1.warns.length?'warn':'on'):'bad');
   $('#lblL1').textContent=S.hw.toUpperCase()+' 0/1/0';
@@ -959,169 +862,28 @@ function refresh(){
   setLed('ledSave',S.dirty?'warn':'');
   $('#lblSave').textContent=S.dirty?'未存檔':'已存檔';
   $('#pend').textContent=(S.cfg.cardType&&S.cfg.cardType!==S.hw)?`card type ${S.cfg.cardType.toUpperCase()} 待 reload`:'';
-  renderTasks();
+  T.renderTasks(TASKS,evalTasks());
 }
-
-/* ---------- input handling ---------- */
-function analyze(raw){
-  let str=raw, roots=modeRoots(S.mode);
-  const pi=str.indexOf('|'); if(pi>=0){ roots=pipeRoots(); str=str.slice(pi+1); }
-  const endsSpace=str.length===0||/\s$/.test(str);
-  const toks=str.trim().split(/\s+/).filter(Boolean);
-  const partial=endsSpace?'':toks.pop();
-  const r=walk(toks,roots);
-  if(r.err) return {err:r.err,i:r.i};
-  if(r.done) return {done:true,children:[],partial:'',runnable:true};
-  const vals=r.vals||[];
-  const neg=vals[0]==='no'||(vals[0]==='do'&&vals[1]==='no');
-  const children=r.node?kids(r.node):roots;
-  const runnable=r.node?(!!r.node.run&&(!r.node.nOnly||neg)):false;
-  return {children,partial,runnable};
-}
-function cands(children,partial){
-  const low=partial.toLowerCase(), set=[];
-  children.forEach(n=>{
-    if(n.t==='k'&&n.k.toLowerCase().startsWith(low)) set.push(n.k);
-    if(n.t==='p'&&n.sug) n.sug().forEach(s=>{ if(s.toLowerCase().startsWith(low)&&!set.includes(s)) set.push(s); });
-  });
-  return set;
-}
-function helpList(children,runnable){
-  const items=children.map(n=>[n.t==='k'?n.k:n.label,n.h||'']);
-  if(runnable) items.push(['<cr>','']);
-  const w=Math.max(4,...items.map(i=>i[0].length));
-  return items.map(([a,b])=>'  '+a.padEnd(w+2)+b).join('\n');
-}
-function caret(raw,idx){
-  const m=[...raw.matchAll(/\S+/g)][idx];
-  print(' '.repeat(promptStr().length+(m?m.index:raw.length))+'^','err');
-  print("% Invalid input detected at '^' marker.");
-}
-function doHelp(){
-  if(S.pending) return;
-  const raw=fix(inp.value);
-  print(promptStr()+raw+'?');
-  const a=analyze(raw);
-  if(a.err==='amb') print(`% Ambiguous command:  "${raw.trim()}"`);
-  else if(a.err) caret(raw,a.i);
-  else if(a.partial){ const c=cands(a.children,a.partial); print(c.length?c.join('  '):'% Unrecognized command'); }
-  else if(!a.children.length&&!a.runnable) print('% Unrecognized command');
-  else print(helpList(a.children,a.runnable));
-  inp.value=raw; scrollDown();
-}
-function doTab(){
-  if(S.pending) return;
-  const raw=fix(inp.value), a=analyze(raw);
-  if(a.err||a.done){ flash(); return; }
-  if(!a.partial){
-    if(!a.children.length){ flash(); return; }
-    print(promptStr()+raw); print(helpList(a.children,a.runnable)); scrollDown(); return;
-  }
-  const c=cands(a.children,a.partial), base=raw.slice(0,raw.length-a.partial.length);
-  if(c.length===1) inp.value=base+c[0]+' ';
-  else if(c.length>1){
-    let cp=c[0];
-    c.forEach(x=>{ let i=0; while(i<cp.length&&i<x.length&&cp[i].toLowerCase()===x[i].toLowerCase()) i++; cp=cp.slice(0,i); });
-    if(cp.length>a.partial.length) inp.value=base+cp;
-    else { print(promptStr()+raw); print(c.join('  ')); scrollDown(); }
-  } else flash();
-  const L=inp.value.length; inp.setSelectionRange(L,L);
-}
-function applyPipe(text,pipe){
-  const [kw,...rest]=pipe.trim().split(/\s+/), pat=rest.join(' ');
-  const k=['begin','include','section'].find(w=>kw&&w.startsWith(kw.toLowerCase()));
-  if(!k||!pat) return '% Incomplete or invalid filter after |';
-  let re; try{ re=new RegExp(pat); }catch(e){ return '% Invalid regular expression'; }
-  const lines=text.split('\n');
-  if(k==='include') return lines.filter(l=>re.test(l)).join('\n');
-  if(k==='begin'){ const i=lines.findIndex(l=>re.test(l)); return i<0?'':lines.slice(i).join('\n'); }
-  const o=[]; let on=false;
-  lines.forEach(l=>{ if(!/^\s/.test(l)) on=re.test(l); if(on) o.push(l); });
-  return o.join('\n');
-}
-function execute(rawIn){
-  const raw=fix(rawIn); let line=raw.trim(); if(!line) return;
-  let pipe=null; const pi=line.indexOf('|');
-  if(pi>=0){ pipe=line.slice(pi+1); line=line.slice(0,pi).trim(); }
-  const toks=line.split(/\s+/);
-  let r=walk(toks,modeRoots(S.mode));
-  if(r.err&&isSub(S.mode)){
-    const r2=walk(toks,configRoots());
-    if(!r2.err&&r2.node&&r2.node.run){ S.mode='config'; S.ctx=null; r=r2; }
-  }
-  if(r.err==='amb'){ print(`% Ambiguous command:  "${line}"`); return; }
-  if(r.err){ caret(raw,r.i); return; }
-  let vals=r.vals, neg=false;
-  if(vals[0]==='do') vals=vals.slice(1);
-  if(vals[0]==='no'){ neg=true; vals=vals.slice(1); }
-  const node=r.node;
-  if(!node.run||(node.nOnly&&!neg)){ print('% Incomplete command.'); return; }
-  const res=node.run(vals,{neg});
-  if(typeof res==='string'&&res.length) print(pipe?applyPipe(res,pipe):res);
-}
-function submit(){
-  const v=inp.value; inp.value='';
-  if(S.pending){ const p=S.pending; S.pending=null; print(p.prompt+v); p.handler(v); }
-  else {
-    print(promptStr()+v);
-    if(v.trim()){ S.history.push(v); if(S.history.length>200) S.history.shift(); }
-    S.hidx=S.history.length;
-    execute(v);
-  }
-  refresh(); scrollDown();
-}
-function hist(dir){
-  if(!S.history.length) return;
-  S.hidx=Math.max(0,Math.min(S.history.length,S.hidx+dir));
-  inp.value=S.history[S.hidx]||'';
-  const L=inp.value.length; inp.setSelectionRange(L,L);
-}
-function ctrlZ(){
-  if(S.pending) return;
-  print(promptStr()+inp.value+'^Z'); inp.value='';
-  if(S.mode!=='exec'&&S.mode!=='priv') print(toPriv(),'log');
-  refresh(); scrollDown();
-}
-inp.addEventListener('keydown',e=>{
-  if(e.isComposing) return;
-  if(e.key==='Tab'){ e.preventDefault(); doTab(); }
-  else if(e.key==='?'){ e.preventDefault(); doHelp(); }
-  else if(e.key==='Enter'){ e.preventDefault(); submit(); }
-  else if(e.key==='ArrowUp'){ e.preventDefault(); hist(-1); }
-  else if(e.key==='ArrowDown'){ e.preventDefault(); hist(1); }
-  else if(e.ctrlKey&&(e.key==='z'||e.key==='Z')){ e.preventDefault(); ctrlZ(); }
-  else if(e.ctrlKey&&(e.key==='c'||e.key==='C')&&!String(window.getSelection())){ e.preventDefault(); print(promptStr()+inp.value); inp.value=''; scrollDown(); }
-});
-inp.addEventListener('input',()=>{
-  const i=inp.value.indexOf('?');
-  if(i>=0){ inp.value=inp.value.slice(0,i); doHelp(); }
-});
-screen.addEventListener('click',()=>{ if(!String(window.getSelection())) inp.focus(); });
-document.querySelectorAll('.keys button').forEach(b=>{
-  b.addEventListener('pointerdown',e=>e.preventDefault());
-  b.addEventListener('click',()=>{
-    const k=b.dataset.k;
-    if(k==='tab') doTab(); else if(k==='?') doHelp(); else if(k==='up') hist(-1); else if(k==='down') hist(1); else if(k==='z') ctrlZ(); else submit();
-    inp.focus();
-  });
-});
 
 /* ---------- side panel ---------- */
-document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
-  document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b?'true':'false'));
-  ['tasks','call','carrier'].forEach(id=>$('#tab-'+id).hidden=id!==b.dataset.tab);
-}));
-$('#inDid').innerHTML=DIDS.map((d,i)=>`<option value="${i}">07-${d}</option>`).join('');
-$('#didList').innerHTML=DIDS.map((d,i)=>`<li>07-${d} → 內線 ${TARGETS[i]}</li>`).join('');
-function renderTrace(title,r){
-  const t=$('#trace'); t.innerHTML='';
-  const p=document.createElement('p'); p.className='tt '+(r.ok?'good':'bad'); p.textContent=`${title}：${r.ok?'成功':'失敗'}`; t.appendChild(p);
-  const ol=document.createElement('ol');
-  r.st.forEach(([k,m])=>{ const li=document.createElement('li'); li.className=k; li.textContent=m; ol.appendChild(li); });
-  t.appendChild(ol);
-  const lines=r.dbg.filter(([k])=>(k==='q'&&S.debug.q931)||(k==='t'&&S.debug.trans));
-  if(lines.length){ lines.forEach(([,l])=>print(l,'dbg')); scrollDown(); }
+/* 出新題目：DID 是 7 碼（不以 806 開頭，避開既有的 rule 1），內線是 6 碼，各自連號。
+   XRI-400 由節點編號換算（見 cli-core.js 的 node）。要在 freshState() 之前呼叫，初始設定的 dial-peer 100 會用到 */
+function rollQuiz(){
+  const {rnd,pad}=CliCore;
+  let pre; do{ pre=rnd(2,8)+pad(rnd(0,999),3); }while(pre.startsWith('806'));
+  const d0=rnd(1,95), ext=rnd(4,8)+pad(rnd(0,999),3), e0=rnd(10,90);
+  DIDS=[0,1,2,3,4].map(k=>pre+pad(d0+k,3));
+  TARGETS=[0,1,2,3,4].map(k=>ext+pad(e0+k,2));
+  NODE=CliCore.node.pick(); XRI_IP=CliCore.node.voip(NODE);
 }
+function showQuiz(){
+  $('#inDid').innerHTML=DIDS.map((d,i)=>`<option value="${i}">07-${d}</option>`).join('');
+  $('#didList').innerHTML=DIDS.map((d,i)=>`<li>07-${d} → 內線 ${TARGETS[i]}</li>`).join('');
+  $('#cExt').value=TARGETS.concat('360500').join(', ');
+  $('#outExt').value=TARGETS[0];
+  T.renderQuiz('在「電信端」分頁按「重設練習」會換一組',[['節點編號',NODE],['DID 轉內線',DIDS.map((d,i)=>`07-${d} → ${TARGETS[i]}`)]]);
+}
+const renderTrace=(title,r)=>T.renderTrace(title,r,k=>(k==='q'&&S.debug.q931)||(k==='t'&&S.debug.trans));
 $('#btnIn').addEventListener('click',()=>{ const i=+$('#inDid').value; renderTrace(`外線撥 07-${DIDS[i]}`,simIn(i)); });
 $('#btnOut').addEventListener('click',()=>{ const e=$('#outExt').value.trim(), n=$('#outNum').value.trim(); renderTrace(`內線 ${e} 撥 ${n}`,simOut(e,n)); });
 document.querySelectorAll('.chips button').forEach(b=>b.addEventListener('click',()=>{ $('#outNum').value=b.dataset.n; }));
@@ -1141,15 +903,16 @@ $('#btnRandom').addEventListener('click',()=>{
   C.hidden=true; syncCarrierUI(); refresh();
 });
 $('#btnReveal').addEventListener('click',()=>{ C.hidden=false; syncCarrierUI(); refresh(); });
-$('#btnReset').addEventListener('click',()=>{ freshState(); freshCarrier(); syncCarrierUI(); out.innerHTML=''; $('#trace').innerHTML=''; welcome(); refresh(); inp.focus(); });
+$('#btnReset').addEventListener('click',()=>{ rollQuiz(); freshState(); freshCarrier(); showQuiz(); syncCarrierUI(); T.clear(); welcome(); refresh(); T.focus(); });
 
 function welcome(){
   print('LAB-RTR-A 模擬器：中華電信 PRI 介接練習','dim');
   print('Tab 補齊指令或列出選項，? 查看可用參數，↑↓ 叫出歷史指令，Ctrl+Z 回到特權模式。','dim');
+  print('卡住時按下方的「提示」或輸入 hint，每多按一次會說得更具體。','hint');
   print('先輸入 enable 開始。這是簡化的模擬，告警與 debug 輸出僅供練習參考。\n','dim');
 }
-welcome(); syncCarrierUI(); refresh();
-inp.focus({preventScroll:true});
+showQuiz(); welcome(); syncCarrierUI(); refresh();
+T.focus({preventScroll:true});
 })();
 </script>
 </body>
