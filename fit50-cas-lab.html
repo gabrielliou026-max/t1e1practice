@@ -241,7 +241,7 @@ button.del{font:inherit;font-size:.8rem;padding:2px 8px;border:1px solid var(--l
 (function(){
 'use strict';
 const {$,clone,ts,K,NUM,WORD,LINE,isIp,isDial,sortK,forward,fwdDesc}=CliCore;
-let Q;   // 題目：站點編碼與 Loopback0、SIGMA 位址、FIT-50 用戶號碼、SIGMA 內線，newQuiz() 產生
+let Q;   // 題目：節點編號（換算出 Loopback0 與 SIGMA 位址）、FIT-50 用戶號碼、SIGMA 內線，newQuiz() 產生
 const UNITS=['0/1/0','0/1/1','0/1/2','0/1/3'];
 const SIGS={'e&m-delay-dial':'E & M Delay Dial','e&m-fgb':'E & M Type II FGB','e&m-fgd':'E & M Type II FGD','e&m-immediate-start':'E & M Immediate Start','e&m-wink-start':'E & M Wink Start','fxo-ground-start':'FXO Ground Start','fxo-loop-start':'FXO Loop Start','fxs-ground-start':'FXS Ground Start','fxs-loop-start':'FXS Loop Start','none':'Null Signalling for External Call Control'};
 
@@ -553,7 +553,7 @@ function simB(user,dialed){
   if(!d) return fail(`路由器沒有 dial-peer 符合 ${dialed}，通話被拒`);
   if(d.type==='pots') return fail(`符合 dial-peer ${d.tag}（${d.dest}），通話被送回 ${d.port}，沒有送到 SIGMA`);
   if(/T/i.test(d.dest)) st.push(['i',`dial-peer ${d.tag} 的 ${d.dest} 含 T，路由器會等數字間隔逾時才送出，接通前會有幾秒延遲`]);
-  if(d.target!=='ipv4:'+Q.sigma) return fail(`session target 是 ${d.target.replace('ipv4:','')}，不是 SIGMA（${Q.sigma}）`);
+  if(d.target!=='ipv4:'+Q.sigma) return fail(`session target 是 ${d.target.replace('ipv4:','')}，不是節點 ${Q.code} 的 SIGMA 位址`);
   if(d.proto!=='sipv2') st.push(['w','沒有設定 session protocol sipv2，預設會用 H.323，SIGMA 這條 trunk 是 SIP（模擬）']);
   if(d.dtmf!=='rtp-nte') st.push(['w','沒有 dtmf-relay rtp-nte，通話中按鍵（DTMF）可能傳不過去']);
   st.push(['v',`符合 dial-peer ${d.tag}（${d.dest}），送 SIP INVITE 到 ${Q.sigma}`]);
@@ -568,7 +568,7 @@ const TASKS=[
   {id:'conf',t:'進入特權模式和全域設定模式',h:'<code>enable</code>，再 <code>configure terminal</code>（可縮寫 <code>conf t</code>）。'},
   {id:'ctl',t:'步驟 1：設定 controller T1 0/1/0 的實體層',h:'<code>controller t1 0/1/0</code>，設定 framing、clock source、linecode、cablelength，參數照上方題目卡。用 <code>show controllers t1 0/1/0</code> 確認沒有告警。'},
   {id:'ds0',t:'步驟 1：設定 ds0-group，信令用 E&amp;M wink-start',h:'<code>ds0-group 1 timeslots 1-24 type e&amp;m-wink-start</code>。文件寫成 e&amp;m-winkstart，模擬器以 另一站實際組態的 e&amp;m-wink-start 為準，實機請用 ? 確認。設好後 <code>show voice port summary</code> 會出現 0/1/0:1。'},
-  {id:'lo',t:'步驟 1：設定 Loopback0 的 IP 位址',h:()=>'<code>interface Loopback0</code>，再 <code>ip address '+Q.loop+' 255.255.255.255</code>。位址看上方題目卡，可以用 <code>show ip interface brief</code> 確認。'},
+  {id:'lo',t:'步驟 1：設定 Loopback0 的 IP 位址',h:'<code>interface Loopback0</code>，再用 <code>ip address</code> 設定位址，遮罩 <code>255.255.255.255</code>。位址由題目卡的節點編號換算，例如 345 → 3.4.5.2。設好用 <code>show ip interface brief</code> 確認。'},
   {id:'dp100',t:'步驟 2.1：FIT-50 打 VoIP 的 dial-peer 100',h:'<code>dial-peer voice 100 voip</code>，設定 destination-pattern、session protocol、session target、session transport、dtmf-relay、codec，最後 <code>no vad</code>。'},
   {id:'dp900',t:'步驟 2.2：VoIP 打 FIT-50 的 dial-peer 900',h:'<code>dial-peer voice 900 pots</code>，<code>destination-pattern 900...</code>、<code>port 0/1/0:1</code>，記得 <code>forward-digits all</code>，否則預設會把 900 去掉。'},
   {id:'trunk',t:'步驟 3.1：SIGMA 的 FIT-50 trunk 指向 Loopback0',h:'到 SIGMA 分頁，Destination URI Address 填 <code>sip:Loopback0位址:5060</code>。Loopback0 位址可以用 <code>show ip interface brief</code> 查。'},
@@ -606,12 +606,12 @@ const HINTS={
   },
   lo:()=>{
     const l=S.cfg.loopbacks['0'], now=l&&l.ip?`目前設成 ${l.ip.addr} ${l.ip.mask}，跟題目不同。`:'';
-    return {where:{mode:'lo',enter:'interface Loopback0',at:c=>c&&c.num==='0'},a:`SIGMA 會把 SIP 送到路由器的 Loopback0，要先給 Loopback0 一個位址。位址由站點編碼換算：三位數編碼拆成三段再加 .2，編碼 ${Q.code} 就是 ${Q.loop}。`,b:`用 interface Loopback0 建立介面，再用 ip address 設定位址和遮罩。Loopback 通常用 /32，遮罩是 255.255.255.255。${now}`,c:[`ip address ${Q.loop} 255.255.255.255`]};
+    return {where:{mode:'lo',enter:'interface Loopback0',at:c=>c&&c.num==='0'},a:'SIGMA 會把 SIP 送到路由器的 Loopback0，要先給 Loopback0 一個位址。位址要用題目卡上的節點編號換算。',b:`用 interface Loopback0 建立介面，再用 ip address 設定位址和遮罩（/32，遮罩 255.255.255.255）。換算規則：三位數節點編號拆成三段再加 .2，例如 345 → 3.4.5.2。${now}`,c:[`ip address ${Q.loop} 255.255.255.255`]};
   },
   dp100:()=>{
     const d=S.cfg.dialPeers.find(x=>x.tag==='100');
     const c=missing(d,'voip',[['dest','.T','destination-pattern .T'],['proto','sipv2','session protocol sipv2'],['target','ipv4:'+Q.sigma,'session target ipv4:'+Q.sigma],['transport','udp','session transport udp'],['dtmf','rtp-nte','dtmf-relay rtp-nte'],['codec','g711ulaw','codec g711ulaw'],['vad',false,'no vad']]);
-    return {where:atDp('100','voip'),a:'FIT-50 打進來的電話，路由器要用一個 VoIP dial-peer 送到 SIGMA。',b:`建立 dial-peer voice 100 voip，設定 destination-pattern、session protocol / target / transport、dtmf-relay、codec，最後關掉 vad。SIGMA 的位址是 ${Q.sigma}。還有 ${c.length} 項沒設好。`,c};
+    return {where:atDp('100','voip'),a:'FIT-50 打進來的電話，路由器要用一個 VoIP dial-peer 送到 SIGMA。',b:`建立 dial-peer voice 100 voip，設定 destination-pattern、session protocol / target / transport、dtmf-relay、codec，最後關掉 vad。SIGMA 的位址由節點編號換算：10.211.(節點編號-300).124，例如 345 → 10.211.45.124。還有 ${c.length} 項沒設好。`,c};
   },
   dp900:()=>{
     const g=ds0();
@@ -620,7 +620,7 @@ const HINTS={
     const c=missing(d,'pots',[['dest','900...','destination-pattern 900...'],['port',g.port,'port '+g.port],['fwd','all','forward-digits all']]);
     return {where:atDp('900','pots'),a:'SIGMA 打 FIT-50 的電話，路由器要用一個 POTS dial-peer 從 T1 語音埠送出去。',b:'建立 dial-peer voice 900 pots，設定 destination-pattern、port、forward-digits。沒設 forward-digits 的話，預設會把開頭的 900 去掉。',c};
   },
-  trunk:()=>({where:{tab:'sigma',name:'SIGMA'},a:'SIGMA 要知道 FIT-50 trunk 的 SIP 要送到哪裡，答案是路由器的 Loopback0。',b:'Loopback0 的位址寫在題目卡上，也可以在終端機用 show ip interface brief 確認。到 SIGMA 分頁填 Destination URI Address，格式是 sip:位址:5060。',c:[`Destination URI Address 填 sip:${Q.loop}:5060，按 Save My Changes`]}),
+  trunk:()=>({where:{tab:'sigma',name:'SIGMA'},a:'SIGMA 要知道 FIT-50 trunk 的 SIP 要送到哪裡，答案是路由器的 Loopback0。',b:'就是路由器 Loopback0 的位址（由節點編號換算），可以在終端機用 show ip interface brief 確認。到 SIGMA 分頁填 Destination URI Address，格式是 sip:位址:5060。',c:[`Destination URI Address 填 sip:${Q.loop}:5060，按 Save My Changes`]}),
   route:()=>({where:{tab:'sigma',name:'SIGMA'},a:`SIGMA 要有一筆 Routing Address，才知道撥 ${Q.fitUser} 要送往 FIT-50 trunk。`,b:'到 SIGMA 分頁的 Routing Address 區塊新增一筆，號碼是題目卡上的 FIT-50 用戶。',c:[`Address 填 ${Q.fitUser}，Name 填 FIT-50，按 Save Changes`]}),
   callA:()=>{ const r=simA(Q.exts[0],Q.fitUser); return {where:{tab:'call',name:'模擬通話'},a:'設定都做完了，實際撥一通「VoIP 打 FIT-50」驗證。',b:r.ok?'目前的設定可以打通，到模擬通話分頁按「VoIP 打 FIT-50」的撥出。':`現在撥會失敗：${failOf(r)}`,c:r.ok?[`發話內線 ${Q.exts[0]}、撥打號碼 ${Q.fitUser}，按撥出`]:[`失敗原因：${failOf(r)}`,`修好之後，發話內線 ${Q.exts[0]}、撥打號碼 ${Q.fitUser}，按撥出`]}; },
   callB:()=>{ const r=simB(Q.fitUser,Q.exts[0]); return {where:{tab:'call',name:'模擬通話'},a:'實際撥一通「FIT-50 打 VoIP」驗證另一個方向。',b:r.ok?'目前的設定可以打通，到模擬通話分頁按「FIT-50 打 VoIP」的撥出。':`現在撥會失敗：${failOf(r)}`,c:r.ok?[`FIT-50 用戶 ${Q.fitUser}、撥打號碼 ${Q.exts[0]}，按撥出`]:[`失敗原因：${failOf(r)}`,`修好之後，FIT-50 用戶 ${Q.fitUser}、撥打號碼 ${Q.exts[0]}，按撥出`]}; },
@@ -688,19 +688,17 @@ $('#btnB').addEventListener('click',()=>{
   if(r.ok&&n===Q.exts[0]) S.flags.callB=true;
   renderTrace(`FIT-50 ${u} 撥 ${n}`,r); refresh();
 });
-/* 出新題目：站點編碼 301–370，Loopback0 由編碼換算（345 → 3.4.5.2）；SIGMA 固定是 10.211.群組.124，只有群組隨機。
+/* 出新題目：Loopback0 與 SIGMA 位址都由節點編號換算（見 cli-core.js 的 node），題目卡只給編號。
    FIT-50 用戶維持 900 開頭（配合 destination-pattern 900...），SIGMA 內線是 3602 開頭的連號 */
-const loopOf=code=>String(code).split('').join('.')+'.2';
 function newQuiz(){
-  const {rnd,pad}=CliCore, e=rnd(1,98), code=rnd(301,370);
-  Q={code:String(code),loop:loopOf(code),sigma:`10.211.${rnd(1,254)}.124`,fitUser:'900'+pad(rnd(0,999),3),exts:['3602'+pad(e,2),'3602'+pad(e+1,2)]};
+  const {rnd,pad,node}=CliCore, e=rnd(1,98), code=node.pick();
+  Q={code,loop:node.loop(code),sigma:node.voip(code),fitUser:'900'+pad(rnd(0,999),3),exts:['3602'+pad(e,2),'3602'+pad(e+1,2)]};
   $('#aExt').value=Q.exts[0]; $('#aNum').value=Q.fitUser; $('#bUser').value=Q.fitUser; $('#bNum').value=Q.exts[0];
   $('#sigExts').textContent=Q.exts.join('、'); $('#fitUserNote').textContent=Q.fitUser;
   T.renderQuiz('按下方「重設練習」會換一組',[
-    ['站點編碼',Q.code],
-    ['Loopback0',`${Q.loop}/32（編碼 ${Q.code} → ${Q.loop}）`],
+    ['節點編號',Q.code],
     ['T1 0/1/0',['framing esf、linecode b8zs','clock source line primary','cablelength short 110','ds0-group 1，timeslots 1-24','信令 E&M wink-start']],
-    ['SIGMA',[Q.sigma+'，SIP over UDP','codec g711ulaw、dtmf-relay rtp-nte、no vad','內線 '+Q.exts.join('、')]],
+    ['SIGMA',['SIP over UDP','codec g711ulaw、dtmf-relay rtp-nte、no vad','內線 '+Q.exts.join('、')]],
     ['FIT-50 用戶',Q.fitUser]
   ]);
 }

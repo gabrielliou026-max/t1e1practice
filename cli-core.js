@@ -434,6 +434,13 @@ function createTerminal(o){
 /* 出題用：rnd(a,b) 是 a 到 b 的整數，pad(n,l) 補零 */
 const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
 const pad=(n,l)=>String(n).padStart(l,'0');
+/* 節點編號 301–370 換算位址：Loopback0 是三位數拆成三段加 .2（345 → 3.4.5.2），
+   語音伺服器是 10.211.(編號-300).124（345 → 10.211.45.124） */
+const node={
+  pick:()=>String(rnd(301,370)),
+  loop:n=>String(n).split('').join('.')+'.2',
+  voip:n=>`10.211.${Number(n)-300}.124`
+};
 
-window.CliCore={$,clone,ts,rnd,pad,K,NUM,WORD,LINE,isIp,isDial,sortK,patInfo,operational,bestPeer,forward,fwdDesc,createTerminal};
+window.CliCore={$,clone,ts,rnd,pad,node,K,NUM,WORD,LINE,isIp,isDial,sortK,patInfo,operational,bestPeer,forward,fwdDesc,createTerminal};
 })();
