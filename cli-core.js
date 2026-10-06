@@ -349,7 +349,7 @@ function createTerminal(o){
     let n=0; const ol=$('#tasks'); ol.innerHTML='';
     tasks.forEach(t=>{
       const done=!!results[t.id]; if(done) n++;
-      const li=document.createElement('li'); if(done) li.className='done'; else if(t===next) li.className='now';
+      const li=document.createElement('li'); if(done) li.className='done'; else if(t===next) li.className='now'; li.dataset.id=t.id;
       const h=val(t.h);
       li.innerHTML=`<span class="box" aria-hidden="true"></span><span class="tt">${val(t.t)}${done?'<span class="sr" style="position:absolute;left:-9999px">（完成）</span>':''}</span><details ${openHints.has(t.id)?'open':''}><summary>提示</summary><div>${h}</div></details>`;
       li.querySelector('details').addEventListener('toggle',e=>{ e.target.open?openHints.add(t.id):openHints.delete(t.id); });

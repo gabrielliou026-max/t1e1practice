@@ -1,0 +1,963 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CN 與 FIT-50 介接練習器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#D5DACD; --panel:#EDEFE6; --ink:#1E2923; --muted:#55625A; --line:#B5BDAE;
+  --olive:#4C5A2E; --olive-ink:#F2F4EA; --amber:#B9860F;
+  --term:#17201C; --term-bar:#222C27; --term-ink:#D5DBCA; --term-dim:#8A968C;
+  --prompt:#E3B23C; --err:#E8907A; --ok:#97C487; --dbg:#9DB9CC;
+  --led-on:#7FCB68; --led-bad:#E0634A; --led-warn:#E3B23C; --led-dim:#3B4640;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --sans:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#111714; --panel:#1B231F; --ink:#DCE3D4; --muted:#96A298; --line:#2D3832;
+    --olive:#8A9C55; --olive-ink:#10140E; --amber:#E3B23C;
+    --term:#0C110F; --term-bar:#151C18;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111714; --panel:#1B231F; --ink:#DCE3D4; --muted:#96A298; --line:#2D3832;
+  --olive:#8A9C55; --olive-ink:#10140E; --amber:#E3B23C;
+  --term:#0C110F; --term-bar:#151C18;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6}
+.wrap{max-width:1320px;margin:0 auto;padding:18px 16px 28px}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;margin-bottom:14px}
+.top h1{font-family:var(--mono);font-weight:600;font-size:1.35rem;letter-spacing:.01em;margin:0}
+.top p{margin:0;color:var(--muted);font-size:.92rem}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:16px;align-items:start}
+@media (max-width:920px){.grid{grid-template-columns:1fr}}
+
+/* console */
+.console{background:var(--term);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;height:min(76vh,760px);min-height:420px;border:1px solid #000}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:9px 14px;background:var(--term-bar);border-bottom:1px solid #000;font-family:var(--mono);font-size:12.5px;color:var(--term-dim)}
+.bar .item{display:inline-flex;align-items:center;gap:7px}
+.led{width:10px;height:10px;border-radius:50%;background:var(--led-dim);box-shadow:inset 0 0 0 1px rgba(0,0,0,.4)}
+.led.on{background:var(--led-on);box-shadow:0 0 8px var(--led-on)}
+.led.bad{background:var(--led-bad);box-shadow:0 0 8px var(--led-bad)}
+.led.warn{background:var(--led-warn);box-shadow:0 0 8px var(--led-warn)}
+.bar .pend{color:var(--prompt)}
+.bar .spacer{flex:1}
+.screen{flex:1;overflow:auto;padding:12px 14px 16px;font-family:var(--mono);font-size:13.5px;line-height:1.5;color:var(--term-ink);cursor:text;overflow-wrap:anywhere}
+.screen.flash{animation:fl .18s}
+@keyframes fl{from{background:#2a1f1b}to{background:transparent}}
+#out div{white-space:pre-wrap;min-height:1.5em}
+#out .dim{color:var(--term-dim)}
+#out .err{color:var(--err)}
+#out .dbg{color:var(--dbg)}
+#out .log{color:var(--term-dim)}
+#out .hint{color:var(--ok)}
+.inline{display:flex;align-items:baseline}
+#prompt{white-space:pre;color:var(--prompt)}
+#cmd{flex:1;min-width:40px;background:transparent;border:0;outline:0;color:var(--term-ink);font:inherit;padding:0;caret-color:var(--prompt)}
+.keys{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#000;border-top:1px solid #000}
+.keys button{font-family:var(--mono);font-size:13px;padding:11px 4px;background:var(--term-bar);color:var(--term-ink);border:0;cursor:pointer}
+.keys button:active{background:#33403a}
+.keys button:focus-visible{outline:2px solid var(--prompt);outline-offset:-2px}
+.keys button.hintkey{color:var(--ok);font-family:var(--sans);font-weight:700}
+
+/* side */
+.side{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.tabs{display:flex;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;font:inherit;font-size:.92rem;padding:11px 6px;border:0;background:transparent;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent}
+.tabs button[aria-selected="true"]{color:var(--ink);font-weight:700;border-bottom-color:var(--olive)}
+.tabs button:focus-visible{outline:2px solid var(--olive);outline-offset:-2px}
+.pane{padding:14px 16px 18px}
+.pane h2{font-size:1rem;margin:0 0 4px}
+.pane h3{font-size:.95rem;margin:18px 0 6px}
+.pane .note{color:var(--muted);font-size:.85rem;margin:6px 0 0}
+.progress{display:flex;align-items:center;gap:10px;margin:2px 0 12px;font-size:.88rem;color:var(--muted)}
+.meter{flex:1;height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--olive);width:0;transition:width .3s}
+ol.tasks{list-style:none;margin:0;padding:0;counter-reset:t}
+ol.tasks li{counter-increment:t;display:grid;grid-template-columns:26px 1fr;gap:4px 8px;padding:9px 0;border-top:1px solid var(--line)}
+ol.tasks li:first-child{border-top:0}
+ol.tasks .box{width:22px;height:22px;border:1.5px solid var(--muted);border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:var(--muted)}
+ol.tasks .box::before{content:counter(t)}
+ol.tasks li.done .box{background:var(--olive);border-color:var(--olive);color:var(--olive-ink)}
+ol.tasks li.done .box::before{content:"✓";font-size:13px}
+ol.tasks li.done .tt{color:var(--muted)}
+ol.tasks li.now .box{border-color:var(--amber);color:var(--amber);border-width:2px}
+ol.tasks li.now .tt{font-weight:700}
+.quiz{border:1px solid var(--line);border-left:4px solid var(--amber);border-radius:6px;padding:10px 12px;margin-bottom:14px;background:var(--bg)}
+.quiz:empty{display:none}
+.quiz h2{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 10px;font-size:.95rem;margin:0 0 6px}
+.quiz h2 small{font-weight:400;font-size:.78rem;color:var(--muted)}
+.quiz dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0;font-size:.86rem}
+.quiz dt{color:var(--muted)}
+.quiz dd{margin:0;font-family:var(--mono);overflow-wrap:anywhere}
+ol.tasks details{grid-column:2;font-size:.85rem;color:var(--muted)}
+ol.tasks summary{cursor:pointer;width:max-content}
+ol.tasks code,.pane code{font-family:var(--mono);font-size:.82rem;background:rgba(127,140,120,.16);padding:1px 4px;border-radius:3px}
+label.f{display:block;font-size:.88rem;color:var(--muted);margin:8px 0 3px}
+select,input.t{width:100%;font:inherit;font-size:.92rem;padding:7px 9px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink)}
+input.t{font-family:var(--mono)}
+.row{display:flex;gap:8px}
+.row>*{flex:1}
+.btn{font:inherit;font-size:.92rem;font-weight:500;padding:8px 14px;border-radius:5px;border:1px solid var(--olive);background:var(--olive);color:var(--olive-ink);cursor:pointer;margin-top:10px}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn:focus-visible,select:focus-visible,input.t:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chips button{font-family:var(--mono);font-size:.78rem;padding:3px 8px;border:1px solid var(--line);border-radius:4px;background:transparent;color:var(--ink);cursor:pointer}
+.trace{margin-top:14px}
+.trace .tt{font-weight:700;margin:0 0 6px}
+.trace .tt.good{color:var(--olive)}
+.trace .tt.bad{color:#B0472F}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .trace .tt.bad{color:var(--err)}}
+.trace ol{list-style:none;margin:0;padding:0}
+.trace li{font-size:.86rem;padding:5px 0 5px 10px;border-left:3px solid var(--line);margin-bottom:4px}
+.trace li.v{border-left-color:var(--olive)}
+.trace li.x{border-left-color:#C2553B}
+.trace li.w{border-left-color:var(--amber)}
+.did{font-family:var(--mono);font-size:.85rem;margin:4px 0 0;padding:0;list-style:none}
+.did li{padding:2px 0}
+.hiddenval{font-size:.88rem;padding:7px 9px;border:1px dashed var(--line);border-radius:5px;color:var(--muted)}
+@media (max-width:600px){
+  .console{height:62vh;min-height:360px}
+  .screen{font-size:12.5px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.win{border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-top:12px;background:var(--bg)}
+.winbar{background:#1F3550;color:#fff;font-size:.88rem;font-weight:700;padding:7px 11px}
+.winbody{padding:4px 11px 12px}
+textarea.t{width:100%;font-family:var(--mono);font-size:.9rem;padding:7px 9px;border:1px solid var(--line);border-radius:5px;background:var(--panel);color:var(--ink);resize:vertical}
+.winbody input.t{background:var(--panel)}
+table.ra{width:100%;border-collapse:collapse;font-size:.86rem;margin-top:8px}
+table.ra th{text-align:left;font-weight:500;color:var(--muted);border-bottom:1px solid var(--line);padding:4px 4px}
+table.ra td{padding:5px 4px;border-bottom:1px solid var(--line);font-family:var(--mono)}
+table.ra td.empty{font-family:var(--sans);color:var(--muted)}
+button.del{font:inherit;font-size:.8rem;padding:2px 8px;border:1px solid var(--line);border-radius:4px;background:transparent;color:var(--ink);cursor:pointer}
+.setup{margin-bottom:12px}
+.setup .row{flex-wrap:wrap}
+.setup .row>div{min-width:140px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>LAB-RTR-B</h1>
+    <p id="lead">CN 與 FIT-50 介接練習，照右側題目卡的數值設定路由器和 SIGMA。Tab 補齊、? 查選項。</p>
+  </header>
+
+  <main class="grid">
+    <section class="console" aria-label="路由器終端機">
+      <div class="bar">
+        <span class="item"><span class="led" id="ledL1"></span><span>T1 0/1/0</span></span>
+        <span class="item"><span class="led" id="ledSig"></span><span id="lblSig">信令</span></span>
+        <span class="item"><span class="led" id="ledSave"></span><span id="lblSave">已存檔</span></span>
+        <span class="spacer"></span>
+      </div>
+      <div class="screen" id="screen">
+        <div id="out"></div>
+        <div class="inline"><span id="prompt"></span><input id="cmd" aria-label="指令輸入" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+      </div>
+      <div class="keys" aria-label="快捷鍵">
+        <button data-k="tab">Tab</button>
+        <button data-k="?">?</button>
+        <button data-k="up">↑</button>
+        <button data-k="down">↓</button>
+        <button data-k="z">Ctrl+Z</button>
+        <button data-k="hint" class="hintkey">提示</button>
+        <button data-k="enter">Enter</button>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="tasks">任務</button>
+        <button role="tab" aria-selected="false" data-tab="sigma">SIGMA</button>
+        <button role="tab" aria-selected="false" data-tab="call">模擬通話</button>
+      </div>
+
+      <div class="pane" id="tab-tasks">
+        <div class="setup">
+          <div class="row">
+            <div><label class="f" for="selMode">練習</label><select id="selMode"><option value="cas">T1 CAS（E&amp;M wink-start）</option><option value="ccs">T1 CCS（ISDN PRI）</option></select></div>
+            <div><label class="f" for="selStart">起始狀態</label><select id="selStart"></select></div>
+          </div>
+          <p class="note">切換後會重新出題，目前的進度會清空。</p>
+        </div>
+        <section class="quiz" id="quiz" aria-label="題目"></section>
+        <div class="progress"><div class="meter"><i id="meter"></i></div><span id="prog"></span></div>
+        <ol class="tasks" id="tasks"></ol>
+        <button class="btn ghost" id="btnReset">重設練習</button>
+      </div>
+
+      <div class="pane" id="tab-sigma" hidden>
+        <h2>CN 內 SIGMA 設定</h2>
+        <p class="note">按下儲存後設定才會生效。</p>
+        <div class="win">
+          <div class="winbar">Edit Trunk Properties For FIT-50</div>
+          <div class="winbody">
+            <label class="f" for="sgUri">Destination URI Address</label>
+            <textarea class="t" id="sgUri" rows="2" placeholder="sip:IP位址:5060"></textarea>
+            <button class="btn" id="sgUriSave">Save My Changes</button>
+            <p class="note" id="sgUriNow"></p>
+          </div>
+        </div>
+        <div class="win">
+          <div class="winbar">Routing Address</div>
+          <div class="winbody">
+            <table class="ra"><thead><tr><th>Address</th><th>Name</th><th></th></tr></thead><tbody id="raList"></tbody></table>
+            <div class="row">
+              <div><label class="f" for="raAddr">Address</label><input class="t" id="raAddr"></div>
+              <div><label class="f" for="raName">Name</label><input class="t" id="raName" value="FIT-50"></div>
+            </div>
+            <button class="btn" id="raSave">Save Changes</button>
+            <p class="note" id="raMsg"></p>
+          </div>
+        </div>
+        <p class="note">SIGMA 上的內線：<span id="sigExts"></span>。這裡只模擬文件用到的兩個畫面，Route Pattern 只做完全相符比對。</p>
+      </div>
+
+      <div class="pane" id="tab-call" hidden>
+        <h2>VoIP 打 FIT-50</h2>
+        <div class="row">
+          <div><label class="f" for="aExt">發話內線</label><input class="t" id="aExt"></div>
+          <div><label class="f" for="aNum">撥打號碼</label><input class="t" id="aNum"></div>
+        </div>
+        <button class="btn" id="btnA">撥出</button>
+
+        <h3>FIT-50 打 VoIP</h3>
+        <div class="row">
+          <div><label class="f" for="bUser">FIT-50 用戶</label><input class="t" id="bUser"></div>
+          <div><label class="f" for="bNum">撥打號碼</label><input class="t" id="bNum"></div>
+        </div>
+        <button class="btn" id="btnB">撥出</button>
+
+        <div class="trace" id="trace" aria-live="polite"></div>
+        <p class="note"><span id="fitSide"></span>用戶號碼 <span id="fitUserNote"></span>。開啟 <span id="dbgNote"></span> 或 <code>debug voice dialpeer</code> 後，模擬通話時終端機也會印出 debug。</p>
+        <p class="note">這是簡化的模擬：告警、信令與 debug 輸出都是為了練習而設計，不代表設備的實際行為。</p>
+      </div>
+    </aside>
+  </main>
+</div>
+<script src="cli-core.js"></script>
+<script>
+(function(){
+'use strict';
+const {$,clone,ts,K,NUM,WORD,LINE,isIp,isDial,sortK,forward,fwdDesc}=CliCore;
+const UNITS=['0/1/0','0/1/1','0/1/2','0/1/3'];
+const SIGS={'e&m-delay-dial':'E & M Delay Dial','e&m-fgb':'E & M Type II FGB','e&m-fgd':'E & M Type II FGD','e&m-immediate-start':'E & M Immediate Start','e&m-wink-start':'E & M Wink Start','fxo-ground-start':'FXO Ground Start','fxo-loop-start':'FXO Loop Start','fxs-ground-start':'FXS Ground Start','fxs-loop-start':'FXS Loop Start','none':'Null Signalling for External Call Control'};
+const SW=['primary-4ess','primary-5ess','primary-dms100','primary-net5','primary-ni','primary-ntt','primary-qsig'];
+const SWH={'primary-4ess':'Lucent 4ESS switch type for the U.S.','primary-5ess':'Lucent 5ESS switch type for the U.S.','primary-dms100':'Northern Telecom DMS-100 switch type for the U.S.','primary-net5':'NET5 switch type for UK, Europe, Asia and Australia','primary-ni':'National ISDN Switch type for the U.S.','primary-ntt':'NTT switch type for Japan','primary-qsig':'QSIG switch type'};
+const FIT_SW='primary-net5', PRI_PORT='0/1/0:23', DCH='0/1/0:23';
+
+/* ---------- 練習目標與起始狀態 ----------
+   MODE 是 FIT-50 那一端的介接方式（cas / ccs），路由器要設定成一樣。
+   START 是 factory（出廠預設）或 swap（另一種介接方式已經設定好，要拆掉改過來）。 */
+const qs=new URLSearchParams(location.search);
+let MODE=qs.get('mode')==='ccs'?'ccs':'cas';
+let START=qs.get('start')==='factory'||qs.get('start')==='swap'?qs.get('start'):(MODE==='ccs'?'swap':'factory');
+const other=m=>m==='cas'?'ccs':'cas';
+const NAME={cas:'T1 CAS',ccs:'T1 CCS'};
+
+let Q;   // 題目：節點編號（換算出 Loopback0 與 SIGMA 位址）、FIT-50 用戶號碼、SIGMA 內線，rollQuiz() 產生
+/* 出新題目：Loopback0 與 SIGMA 位址都由節點編號換算（見 cli-core.js 的 node），題目卡只給編號。
+   FIT-50 用戶是隨機 6 碼（不以 0、3 開頭，避開 SIGMA 的 3602 內線），SIGMA 內線是 3602 開頭的連號 */
+function rollQuiz(){
+  const {rnd,pad,node}=CliCore, e=rnd(1,98), code=node.pick();
+  Q={code,loop:node.loop(code),sigma:node.voip(code),fitUser:'12456789'[rnd(0,7)]+pad(rnd(0,99999),5),exts:['3602'+pad(e,2),'3602'+pad(e+1,2)]};
+}
+/* dial-peer 900 的 destination-pattern：要比對得到 FIT-50 用戶，又不能把 SIGMA 內線也吃進來（否則 FIT-50 打 VoIP 會被繞回 T1） */
+function fitPatOk(p){ const pi=p&&CliCore.patInfo(p); return !!pi&&pi.re.test(Q.fitUser)&&!Q.exts.some(x=>pi.re.test(x)); }
+function fitPat(){ return Q.fitUser.slice(0,3)+'...'; }
+
+/* ---------- state ---------- */
+const defCtl=()=>({framing:'sf',linecode:'ami',clock:null,cable:null,desc:'',ds0:null,pri:null});
+const newVP=()=>({shut:false,compand:null,desc:''});
+function factoryConfig(){
+  const c={}; UNITS.forEach(u=>c[u]=defCtl());
+  const vp={}; for(let i=0;i<6;i++) vp['1/0/'+i]=newVP();
+  return {hostname:'LAB-RTR-B',globalSwitch:null,controllers:c,serials:{},loopbacks:{},voicePorts:vp,dialPeers:[]};
+}
+/* 照文件設定完成的路由器：kind 是 cas（文件 01）或 ccs（文件 02） */
+function doneConfig(kind){
+  const cfg=factoryConfig(), c=cfg.controllers['0/1/0'];
+  Object.assign(c,{framing:'esf',linecode:'b8zs',clock:'line primary',cable:'short 110'});
+  cfg.loopbacks['0']={ip:{addr:Q.loop,mask:'255.255.255.255'},desc:''};
+  cfg.dialPeers.push({tag:'100',type:'voip',vad:false,dest:'.T',proto:'sipv2',target:'ipv4:'+Q.sigma,transport:'udp',dtmf:'rtp-nte',codec:'g711ulaw'});
+  if(kind==='cas'){ c.ds0={num:'1',ts:'1-24',type:'e&m-wink-start'}; cfg.voicePorts['0/1/0:1']=newVP(); }
+  else {
+    c.pri='1-24'; cfg.globalSwitch=FIT_SW;
+    cfg.serials[DCH]={sw:FIT_SW,incoming:true,noip:true,ip:null,encap:'ppp',desc:'',shut:false};
+    cfg.voicePorts[PRI_PORT]=Object.assign(newVP(),{compand:'u-law'});
+  }
+  cfg.dialPeers.push({tag:'900',type:'pots',dest:fitPat(),port:kind==='cas'?'0/1/0:1':PRI_PORT,fwd:'all'});
+  return cfg;
+}
+let S,SG;
+function fresh(){
+  const swap=START==='swap', cfg=swap?doneConfig(other(MODE)):factoryConfig();
+  S={cfg,startup:clone(cfg),dirty:false,mode:'exec',ctx:null,debug:{vpm:false,dp:false,q931:false},history:[],hidx:0,pending:null,flags:{conf:false,saved:false,callA:false,callB:false}};
+  SG=swap?{trunk:`sip:${Q.loop}:5060`,routes:[{addr:Q.fitUser,name:'FIT-50'}]}:{trunk:'',routes:[]};
+}
+rollQuiz(); fresh();
+
+const T=CliCore.createTerminal({
+  state:()=>S, refresh:()=>refresh(),
+  doneHint:'全部任務都完成了。可以按任務分頁的「重設練習」再練一次，或換另一種練習、起始狀態。',
+  modes:{exec:{roots:execRoots,prompt:'>'},priv:{roots:privRoots,prompt:'#'},config:{roots:configRoots,prompt:'(config)#'},ctl:{roots:ctlRoots,prompt:'(config-controller)#'},lo:{roots:loRoots,prompt:'(config-if)#'},if:{roots:ifRoots,prompt:'(config-if)#'},vp:{roots:vpRoots,prompt:'(config-voiceport)#'},dp:{roots:dpRoots,prompt:'(config-dial-peer)#'}},
+  fix:s=>s.replace(/^(\s*(?:do\s+)?(?:no\s+)?int[a-z]*\s+)((?:lo|se)[a-z]*)(\d)/i,'$1$2 $3'),
+  newDialPeer:(tag,type)=>type==='voip'?{tag,type,vad:true}:{tag,type}
+});
+const {print,mark,withCommon,enterConfig,toPriv,logout,enterDP,save,copyRun,setLed}=T;
+const bestPeer=num=>CliCore.bestPeer(S.cfg,num);
+const ctl0=()=>S.cfg.controllers['0/1/0'];
+
+/* ---------- mode trees ---------- */
+function showRoots(priv){
+  const l=[
+    K('controllers','Interface controller status',[K('t1','T1 controller internal state',[WORD('<0-0>/<1-1>/<0-3>','Controller unit number',null,showCtl,t=>UNITS.includes(t),{sug:()=>UNITS})],showCtl)]),
+    K('dial-peer','Dial Plan Mapping Table for, e.g. VoIP Peers',[K('voice','Voice type dial peers',[K('summary','Dial-peer summary information',null,showDP)])]),
+    K('ip','IP information',[K('interface','IP interface status and configuration',[K('brief','Brief summary of IP status and configuration',null,showIpBrief)])]),
+    K('isdn','ISDN information',[K('status','ISDN Line Status',null,showIsdn)]),
+    K('voice','Voice port configuration & stats',[K('port','Voice port status',[K('summary','Summary of all voice ports',null,showVPS)])])
+  ];
+  if(priv) l.push(
+    K('debugging','State of each debugging option',null,showDebug),
+    K('running-config','Current operating configuration',null,()=>cfgText(S.cfg,true)),
+    K('startup-config','Contents of startup configuration',null,()=>cfgText(S.startup,false))
+  );
+  return sortK(l);
+}
+function execRoots(){ return [
+  K('enable','Turn on privileged commands',null,()=>{S.mode='priv';}),
+  K('exit','Exit from the EXEC',null,logout),
+  K('show','Show running system information',()=>showRoots(false))
+];}
+function privRoots(){
+  const undebug=()=>{S.debug={vpm:false,dp:false,q931:false}; return 'All possible debugging has been turned off';};
+  return sortK([
+    K('configure','Enter configuration mode',[K('terminal','Configure from the terminal',null,enterConfig)],enterConfig),
+    K('copy','Copy from one file to another',[K('running-config','Copy from current system configuration',[K('startup-config','Copy to startup configuration',null,copyRun)])]),
+    K('debug','Debugging functions',[
+      K('isdn','ISDN debug commands',[K('q931','ISDN Q931 packets',null,()=>{S.debug.q931=true; return 'debug isdn q931 is              ON.';})]),
+      K('voice','Voice debugging',[K('dialpeer','Voice dial-peer matching',null,()=>{S.debug.dp=true; return 'voice dialpeer debugging is on';})]),
+      K('vpm','Voice Port Module debugs',[K('signal','Signaling debugging',null,()=>{S.debug.vpm=true; return 'Voice Port Module signaling debugging is enabled';})])
+    ]),
+    K('disable','Turn off privileged commands',null,()=>{S.mode='exec';}),
+    K('exit','Exit from the EXEC',null,logout),
+    K('no','Negate a command or set its defaults',[K('debug','Disable debugging functions',[K('all','Enable all debugging',null,undebug)])]),
+    K('show','Show running system information',()=>showRoots(true)),
+    K('undebug','Disable debugging functions (see also \'debug\')',[K('all','Enable all debugging',null,undebug)]),
+    K('write','Write running configuration to memory, network, or terminal',[K('memory','Write to NV memory',null,save)],save)
+  ]);
+}
+function configRoots(){
+  return withCommon([
+    K('controller','Configure a specific controller',[K('t1','T1 controller',[WORD('<0-0>/<1-1>/<0-3>','Controller unit number',null,(v,x)=>{ if(x.neg) return '% Controllers cannot be removed'; S.mode='ctl'; S.ctx={name:v[2]}; },t=>UNITS.includes(t),{sug:()=>UNITS})])]),
+    K('dial-peer','Dial Map (Peer) configuration commands',[K('voice','Voice type dial peers',[NUM(1,1073741823,'Voice dial-peer tag',[
+        K('pots','Telephony',null,(v,x)=>enterDP(v[2],'pots',x)),
+        K('voip','Voice over IP',null,(v,x)=>enterDP(v[2],'voip',x))
+      ],(v,x)=>enterDP(v[2],null,x),{nOnly:true,sug:()=>S.cfg.dialPeers.map(d=>d.tag)})])]),
+    K('hostname','Set system\'s network name',[WORD('WORD','This system\'s network name',null,(v,x)=>{ if(x.neg) return; S.cfg.hostname=v[1]; mark(); })]),
+    K('interface','Select an interface to configure',[
+      K('Loopback','Loopback interface',[NUM(0,2147483647,'Loopback interface number',null,enterLo,{sug:()=>Object.keys(S.cfg.loopbacks).length?Object.keys(S.cfg.loopbacks):['0']})]),
+      K('Serial','Serial',[WORD('<0-1>/<0-1>/<0-3>:<0-23>','Serial interface number',null,(v,x)=>enterIf(v[2],x),t=>!!S.cfg.serials[t],{sug:()=>Object.keys(S.cfg.serials)})])
+    ]),
+    K('isdn','ISDN configuration commands',[K('switch-type','Select the ISDN switch type',SW.map(s=>K(s,SWH[s],null,(v,x)=>{S.cfg.globalSwitch=x.neg?null:s; mark();})),(v,x)=>{S.cfg.globalSwitch=null; mark();},{nOnly:true})]),
+    K('voice-port','Switch to a voice port',[WORD('<slot/subunit/port>','Voice port',null,(v,x)=>enterVP(v[1],x),t=>!!S.cfg.voicePorts[t],{sug:()=>Object.keys(S.cfg.voicePorts)})])
+  ]);
+}
+function enterLo(v,x){
+  const n=v[2], lbs=S.cfg.loopbacks;
+  if(x.neg){ if(!lbs[n]) return `% Interface Loopback${n} does not exist`; delete lbs[n]; mark(); return; }
+  if(!lbs[n]){ lbs[n]={ip:null,desc:''}; mark(); }
+  S.mode='lo'; S.ctx={num:n};
+}
+function enterIf(name,x){ if(x.neg) return '% Removal of channelized serial interfaces is not supported; use "no pri-group" on the controller'; S.mode='if'; S.ctx={name}; }
+function enterVP(name,x){ if(x.neg) return '% Voice ports cannot be removed'; S.mode='vp'; S.ctx={name}; }
+function loRoots(){
+  const lb=()=>S.cfg.loopbacks[S.ctx.num];
+  return withCommon([
+    K('description','Interface specific description',[LINE('Up to 240 characters describing this interface',(v,x)=>{lb().desc=x.neg?'':v[1]; mark();})],(v,x)=>{lb().desc=''; mark();},{nOnly:true}),
+    K('ip','Interface Internet Protocol config commands',[K('address','Set the IP address of an interface',[WORD('A.B.C.D','IP address',[WORD('A.B.C.D','IP subnet mask',null,(v,x)=>{ lb().ip=x.neg?null:{addr:v[2],mask:v[3]}; mark(); },isIp)],null,isIp)],(v,x)=>{lb().ip=null; mark();},{nOnly:true})])
+  ]);
+}
+function ifRoots(){
+  const s=()=>S.cfg.serials[S.ctx.name];
+  const enc=e=>(v,x)=>{s().encap=x.neg?'hdlc':e; mark();};
+  return withCommon([
+    K('description','Interface specific description',[LINE('Up to 240 characters describing this interface',(v,x)=>{s().desc=x.neg?'':v[1]; mark();})],(v,x)=>{s().desc=''; mark();},{nOnly:true}),
+    K('encapsulation','Set encapsulation type for an interface',[K('hdlc','Serial HDLC synchronous',null,enc('hdlc')),K('ppp','Point-to-Point protocol',null,enc('ppp'))]),
+    K('ip','Interface Internet Protocol config commands',[K('address','Set the IP address of an interface',[WORD('A.B.C.D','IP address',[WORD('A.B.C.D','IP subnet mask',null,(v,x)=>{ if(x.neg){s().noip=true;s().ip=null;} else {s().noip=false;s().ip=v[2]+' '+v[3];} mark(); },isIp)],null,isIp)],(v,x)=>{s().noip=true; s().ip=null; mark();},{nOnly:true})]),
+    K('isdn','ISDN Interface configuration commands',[
+      K('incoming-voice','Specify options for incoming calls.',[
+        K('data','Incoming voice calls will be handled as data.',null,(v,x)=>{s().incoming=false; mark();}),
+        K('voice','Incoming voice calls will be handled as voice.',null,(v,x)=>{s().incoming=!x.neg; mark();})
+      ],(v,x)=>{s().incoming=false; mark();},{nOnly:true}),
+      K('switch-type','Select the Interface ISDN switch type',SW.map(w=>K(w,SWH[w],null,(v,x)=>{s().sw=x.neg?null:w; mark();})),(v,x)=>{s().sw=null; mark();},{nOnly:true})
+    ]),
+    K('shutdown','Shutdown the selected interface',null,(v,x)=>{s().shut=!x.neg; mark();})
+  ]);
+}
+function vpRoots(){
+  const vp=()=>S.cfg.voicePorts[S.ctx.name];
+  const cp=val=>(v,x)=>{vp().compand=x.neg?null:val; mark();};
+  return withCommon([
+    K('compand-type','The compand type',[K('a-law','A-law',null,cp('a-law')),K('u-law','u-law',null,cp('u-law'))],(v,x)=>{vp().compand=null; mark();},{nOnly:true}),
+    K('description','Description of what this port is connected to',[LINE('Character string up to 255 characters',(v,x)=>{vp().desc=x.neg?'':v[1]; mark();})],(v,x)=>{vp().desc=''; mark();},{nOnly:true}),
+    K('shutdown','Take voice-port offline',null,(v,x)=>{ vp().shut=!x.neg; mark(); })
+  ]);
+}
+function ctlRoots(){
+  const c=()=>S.cfg.controllers[S.ctx.name], d=defCtl();
+  const set=(k,val)=>(v,x)=>{c()[k]=x.neg?d[k]:val; mark();};
+  const clk=val=>(v,x)=>{c().clock=x.neg?null:val; mark();};
+  const cab=val=>(v,x)=>{c().cable=x.neg?null:val; mark();};
+  const tsOk=t=>/^\d+(-\d+)?(,\d+(-\d+)?)*$/.test(t)&&t.split(/[-,]/).every(n=>+n>=1&&+n<=24);
+  return withCommon([
+    K('cablelength','Specify the cable length for a DS1 link',[
+      K('long','long cable length in decibels',['0db','-7.5db','-15db','-22.5db'].map(n=>K(n,n+' transmit attenuation',null,cab('long '+n)))),
+      K('short','short cable length in feet',['110','220','330','440','550','660'].map(n=>K(n,n+' feet',null,cab('short '+n))))
+    ],cab(null),{nOnly:true}),
+    K('clock','Specify the clock source for a DS1 link',[K('source','Specify the clock source for a DS1 link',[
+      K('internal','Internal Clock Source',null,clk('internal')),
+      K('line','Recover Clock from Line',[K('primary','Primary Line Clock Source',null,clk('line primary')),K('secondary','Secondary Line Clock Source',null,clk('line secondary'))],clk('line'))
+    ],clk(null),{nOnly:true})]),
+    K('description','Controller specific description',[LINE('Up to 80 characters describing this controller',(v,x)=>{c().desc=x.neg?'':v[1]; mark();})],(v,x)=>{c().desc=''; mark();},{nOnly:true}),
+    K('ds0-group','Specify the timeslots for DS0 group',[NUM(0,23,'Channel number',[
+      K('timeslots','List of timeslots in the DS0 group',[WORD('<1-24>','List of timeslots, e.g. 1-24',[
+        K('type','Specify the type of signaling',Object.keys(SIGS).map(s=>K(s,SIGS[s],null,setDs0)))
+      ],(v,x)=>removeDs0(v[1],x),tsOk,{sug:()=>['1-24'],nOnly:true})])
+    ],(v,x)=>removeDs0(v[1],x),{nOnly:true,sug:()=>{const g=c().ds0; return g?[String(g.num)]:[];}})]),
+    K('framing','Specify the type of Framing on a T1 link',[K('esf','Extended Superframe Framing',null,set('framing','esf')),K('sf','Superframe Framing',null,set('framing','sf'))],(v,x)=>{c().framing=d.framing; mark();},{nOnly:true}),
+    K('linecode','Specify the line encoding method for a T1 link',[K('ami','AMI encoding',null,set('linecode','ami')),K('b8zs','B8ZS encoding',null,set('linecode','b8zs'))],(v,x)=>{c().linecode=d.linecode; mark();},{nOnly:true}),
+    K('pri-group','Configure the specified timeslots for PRI',[K('timeslots','List of timeslots in the pri-group',[WORD('<1-24>','List of timeslots, e.g. 1-24',null,setPri,tsOk,{sug:()=>['1-24']})],(v,x)=>removePri(),{nOnly:true})],(v,x)=>removePri(),{nOnly:true})
+  ]);
+}
+/* 語音埠拆掉時，指向它的 dial-peer port 一併清掉 */
+function dropPort(port){
+  delete S.cfg.voicePorts[port];
+  const hit=S.cfg.dialPeers.filter(d=>d.port===port); hit.forEach(d=>delete d.port);
+  return hit.length?`（模擬器提示：voice-port ${port} 已移除，dial-peer ${hit.map(d=>d.tag).join('、')} 原本的 port ${port} 也一併清掉了）`:'';
+}
+/* 拆 ds0-group / pri-group 前要先 shutdown 對應的 voice-port（照文件 02 步驟 2 的順序，模擬器以此為規則） */
+const notShut=port=>`% Voice-port ${port} is in service. Shut down the voice-port before removing it（模擬器提示：先到 voice-port ${port} 下 shutdown）`;
+function setDs0(v,x){
+  const c=S.cfg.controllers[S.ctx.name], num=v[1];
+  if(x.neg) return removeDs0(num,x);
+  if(c.pri) return '% Timeslots 1-24 are already used by the pri-group. Remove the pri-group first.';
+  if(c.ds0&&String(c.ds0.num)!==num) return `% Only one ds0-group is supported in this simulator. Remove ds0-group ${c.ds0.num} first.`;
+  c.ds0={num,ts:v[3],type:v[5]};
+  const port=S.ctx.name+':'+num; S.cfg.voicePorts[port]=S.cfg.voicePorts[port]||newVP();
+  mark();
+}
+function removeDs0(num){
+  const c=S.cfg.controllers[S.ctx.name], port=S.ctx.name+':'+num;
+  if(!c.ds0||String(c.ds0.num)!==String(num)) return `% ds0-group ${num} is not configured`;
+  if(S.cfg.voicePorts[port]&&!S.cfg.voicePorts[port].shut) return notShut(port);
+  c.ds0=null; mark(); return dropPort(port);
+}
+function setPri(v,x){
+  const c=S.cfg.controllers[S.ctx.name];
+  if(x.neg) return removePri();
+  if(c.ds0) return `% Timeslots are already used by ds0-group ${c.ds0.num}. Remove the ds0-group first.`;
+  c.pri=v[2];
+  const dn=S.ctx.name+':23';
+  if(!S.cfg.serials[dn]) S.cfg.serials[dn]={sw:S.cfg.globalSwitch,incoming:false,noip:true,ip:null,encap:'hdlc',desc:'',shut:false};
+  if(!S.cfg.voicePorts[dn]) S.cfg.voicePorts[dn]=newVP();
+  mark();
+}
+function removePri(){
+  const c=S.cfg.controllers[S.ctx.name], dn=S.ctx.name+':23';
+  if(!c.pri) return;
+  if(S.cfg.voicePorts[dn]&&!S.cfg.voicePorts[dn].shut) return notShut(dn);
+  c.pri=null; delete S.cfg.serials[dn]; mark(); return dropPort(dn);
+}
+function dpRoots(){
+  const dp=()=>S.cfg.dialPeers.find(d=>d.tag===S.ctx.tag);
+  const del=k=>(v,x)=>{ delete dp()[k]; mark(); };
+  const n=T.dialPeerNodes(dp,'512...');
+  const l=[n.description,n.destination];
+  if(dp().type==='pots') l.push(n.forwardDigits,n.port);
+  else {
+    l.push(
+      K('codec','Codec',[['g711alaw','G.711 A Law 64000 bps'],['g711ulaw','G.711 u Law 64000 bps'],['g729r8','G.729 8000 bps']].map(([k,h])=>K(k,h,null,(v,x)=>{ if(x.neg) delete dp().codec; else dp().codec=k; mark(); }))),
+      K('dtmf-relay','Transport DTMF digits across IP link',[K('rtp-nte','RTP Named Telephone Event RFC 2833',null,(v,x)=>{ if(x.neg) delete dp().dtmf; else dp().dtmf='rtp-nte'; mark(); })],del('dtmf'),{nOnly:true}),
+      n.session,
+      K('vad','Voice Activity Detection',null,(v,x)=>{ dp().vad=!x.neg; mark(); })
+    );
+  }
+  return withCommon(l);
+}
+
+/* ---------- status ---------- */
+function l1(){
+  const c=ctl0();
+  if(c.framing!=='esf') return {up:false,alarm:'Receiver has loss of frame.',why:'framing 與 FIT-50 不一致'};
+  const warns=[];
+  if(c.linecode!=='b8zs') warns.push('linecode');
+  if((c.clock||'line').startsWith('internal')) warns.push('clock');
+  return {up:true,warns};
+}
+function ds0(){
+  const g=ctl0().ds0; if(!g) return null;
+  return Object.assign({},g,{port:'0/1/0:'+g.num,ok:g.type==='e&m-wink-start'});
+}
+/* 路由器目前的信令：pri-group 是 ccs，ds0-group 是 cas */
+const sigOf=()=>ctl0().pri?'ccs':ctl0().ds0?'cas':null;
+const actPort=()=>ctl0().pri?PRI_PORT:(ds0()||{}).port||null;
+/* ISDN Layer 2 只有在 FIT-50 那端也是 CCS 時才會建立 */
+function isdnState(){
+  const ser=S.cfg.serials[DCH];
+  if(!ser) return {exists:false};
+  const sw=ser.sw||S.cfg.globalSwitch, L1=l1();
+  const up=L1.up&&!ser.shut&&MODE==='ccs'&&sw===FIT_SW;
+  return {exists:true,ser,sw,L1,up,swOk:sw===FIT_SW,l2:up?'MULTIPLE_FRAME_ESTABLISHED':'TEI_ASSIGNED'};
+}
+function trunkDest(){
+  const m=SG.trunk.trim().match(/^sip:(\d{1,3}(?:\.\d{1,3}){3})(?::(\d+))?$/i);
+  return m?{ip:m[1],port:m[2]||'5060'}:null;
+}
+
+/* ---------- show ---------- */
+function cfgText(cfg,running){
+  const L=['!','! 模擬器只顯示與 FIT-50 介接相關的設定','!','version 17.12',`hostname ${cfg.hostname}`,'!','card type t1 0 1','!'];
+  if(cfg.globalSwitch) L.push(`isdn switch-type ${cfg.globalSwitch}`,'!');
+  UNITS.forEach(u=>{
+    const c=cfg.controllers[u]; L.push(`controller T1 ${u}`);
+    if(c.framing!=='sf') L.push(` framing ${c.framing}`);
+    if(c.clock) L.push(` clock source ${c.clock}`);
+    if(c.linecode!=='ami') L.push(` linecode ${c.linecode}`);
+    if(c.cable) L.push(` cablelength ${c.cable}`);
+    if(c.ds0) L.push(` ds0-group ${c.ds0.num} timeslots ${c.ds0.ts} type ${c.ds0.type}`);
+    if(c.pri) L.push(` pri-group timeslots ${c.pri}`);
+    if(c.desc) L.push(` description ${c.desc}`);
+    L.push('!');
+  });
+  Object.keys(cfg.loopbacks).sort((a,b)=>a-b).forEach(n=>{
+    const l=cfg.loopbacks[n]; L.push(`interface Loopback${n}`);
+    if(l.desc) L.push(` description ${l.desc}`);
+    L.push(l.ip?` ip address ${l.ip.addr} ${l.ip.mask}`:' no ip address','!');
+  });
+  Object.keys(cfg.serials).sort().forEach(n=>{
+    const s=cfg.serials[n]; L.push(`interface Serial${n}`);
+    if(s.desc) L.push(` description ${s.desc}`);
+    L.push(s.noip?' no ip address':s.ip?` ip address ${s.ip}`:' no ip address');
+    if(s.encap!=='hdlc') L.push(` encapsulation ${s.encap}`);
+    if(s.shut) L.push(' shutdown');
+    if(s.sw) L.push(` isdn switch-type ${s.sw}`);
+    if(s.incoming) L.push(' isdn incoming-voice voice');
+    L.push('!');
+  });
+  Object.keys(cfg.voicePorts).sort().forEach(n=>{
+    const v=cfg.voicePorts[n]; L.push(`voice-port ${n}`);
+    if(v.compand) L.push(` compand-type ${v.compand}`);
+    if(v.desc) L.push(` description ${v.desc}`);
+    if(v.shut) L.push(' shutdown');
+    L.push('!');
+  });
+  cfg.dialPeers.forEach(d=>{
+    L.push(`dial-peer voice ${d.tag} ${d.type}`);
+    if(d.desc) L.push(` description ${d.desc}`);
+    if(d.dest) L.push(` destination-pattern ${d.dest}`);
+    if(d.type==='voip'){
+      if(d.proto) L.push(` session protocol ${d.proto}`);
+      if(d.target) L.push(` session target ${d.target}`);
+      if(d.transport) L.push(` session transport ${d.transport}`);
+      if(d.dtmf) L.push(` dtmf-relay ${d.dtmf}`);
+      if(d.codec) L.push(` codec ${d.codec}`);
+      if(d.vad===false) L.push(' no vad');
+    } else {
+      if(d.port) L.push(` port ${d.port}`);
+      if(d.fwd!=null) L.push(` forward-digits ${d.fwd}`);
+    }
+    L.push('!');
+  });
+  L.push('end');
+  const b=L.join('\n');
+  return running?`Building configuration...\n\nCurrent configuration : ${b.length} bytes\n${b}`:`Using ${b.length} out of 33554432 bytes\n${b}`;
+}
+function showCtl(v){
+  const units=v[3]?[v[3]]:UNITS;
+  return units.map(n=>{
+    const c=S.cfg.controllers[n], st=n==='0/1/0'?l1():{up:false,alarm:'Receiver has loss of signal.'};
+    const L=[`T1 ${n} is ${st.up?'up':'down'}.`,'  Applique type is Channelized T1'];
+    if(c.desc) L.push(`  Description: ${c.desc}`);
+    L.push(st.up?'  No alarms detected.':`  ${st.alarm}`,'  alarm-trigger is not set',`  Cablelength is ${c.cable||'long 0db'}`);
+    const clk=(c.clock||'line').replace(/^line/,'Line').replace('primary','Primary').replace('secondary','Secondary').replace(/^internal/,'Internal');
+    L.push(`  Framing is ${c.framing.toUpperCase()}, Line Code is ${c.linecode.toUpperCase()}, Clock Source is ${clk}.`);
+    const lcv=st.up&&st.warns.includes('linecode')?1532:0, slip=st.up&&st.warns.includes('clock')?87:0, fl=st.up?0:900;
+    L.push('  Data in current interval (900 seconds elapsed):',
+      `     ${lcv} Line Code Violations, ${lcv?212:0} Path Code Violations`,
+      `     ${slip} Slip Secs, ${fl} Fr Loss Secs, 0 Line Err Secs, 0 Degraded Mins`,
+      `     ${lcv?41:0} Errored Secs, 0 Bursty Err Secs, 0 Severely Err Secs, ${fl} Unavail Secs`);
+    if(n==='0/1/0'){
+      if(!st.up) L.push(`  （模擬器提示：${st.why}）`);
+      else if(st.warns.includes('linecode')) L.push('  （模擬器提示：linecode 與 FIT-50 不一致）');
+      else if(st.warns.includes('clock')) L.push('  （模擬器提示：時脈應該從線路取，clock source line）');
+    }
+    return L.join('\n');
+  }).join('\n\n');
+}
+function showIsdn(){
+  const iz=isdnState();
+  let s=`Global ISDN Switchtype = ${S.cfg.globalSwitch||'none'}`;
+  if(!iz.exists) return s+'\n%Q.931 is not configured on any interface（模擬器提示：controller 需要 pri-group 才會產生 D 通道）';
+  s+=`\nISDN Serial${DCH} interface\n        dsl 0, interface ISDN Switchtype = ${iz.sw||'none'}`;
+  s+=`\n    Layer 1 Status:\n        ${iz.L1.up&&!iz.ser.shut?'ACTIVE':'DEACTIVATED'}`;
+  s+=`\n    Layer 2 Status:\n        TEI = 0, Ces = 1, SAPI = 0, State = ${iz.l2}`;
+  s+='\n    Layer 3 Status:\n        0 Active Layer 3 Call(s)\n    Active dsl 0 CCBs = 0\n    The Free Channel Mask:  0x807FFFFF';
+  s+='\n    Number of L2 Discards = 0, L2 Session ID = 0\n    Total Allocated ISDN CCBs = 0';
+  if(!iz.up&&iz.L1.up&&!iz.ser.shut) s+=MODE!=='ccs'?'\n（模擬器提示：FIT-50 這條 T1 是 CAS，沒有 ISDN，Layer 2 不會建立）':'\n（模擬器提示：switch-type 與 FIT-50 不一致，Layer 2 建立不起來）';
+  return s;
+}
+function showDP(){ return T.showDP(18,'（目前沒有任何 dial-peer）'); }
+function showIpBrief(){
+  const L=['Interface              IP-Address      OK? Method Status                Protocol'], ns=Object.keys(S.cfg.loopbacks).sort((a,b)=>a-b);
+  ns.forEach(n=>{ const l=S.cfg.loopbacks[n]; L.push(('Loopback'+n).padEnd(23)+(l.ip?l.ip.addr:'unassigned').padEnd(16)+'YES '+(l.ip?'manual':'unset').padEnd(7)+'up                    up'); });
+  L.push(ns.length?'（模擬器只列出 Loopback 介面）':'（模擬器只列出 Loopback 介面，目前還沒有建立任何 Loopback）');
+  return L.join('\n');
+}
+function showVPS(){
+  const L=['                                           IN       OUT','PORT            CH   SIG-TYPE   ADMIN OPER STATUS   STATUS   EC','=============== == ============ ===== ==== ======== ======== =='];
+  const g=ds0(), up=l1().up, row=(p,ch,sig,vp,oper)=>`${p.padEnd(16)}${ch}  ${sig.padEnd(13)}${(vp.shut?'down':'up').padEnd(6)}${(vp.shut?'down':oper).padEnd(5)}idle     idle     y`;
+  if(g){
+    const ab={'e&m-wink-start':'e&m-wnk','e&m-immediate-start':'e&m-imd','e&m-delay-dial':'e&m-dly','e&m-fgb':'e&m-fgb','e&m-fgd':'e&m-fgd','fxo-ground-start':'fxo-gs','fxo-loop-start':'fxo-ls','fxs-ground-start':'fxs-gs','fxs-loop-start':'fxs-ls','none':'none'}[g.type];
+    L.push(row(g.port,'01',ab,S.cfg.voicePorts[g.port]||newVP(),up?'up':'dorm'));
+  }
+  if(ctl0().pri) L.push(row(PRI_PORT,'01','isdn-voice',S.cfg.voicePorts[PRI_PORT]||newVP(),isdnState().up?'up':'dorm'));
+  for(let i=0;i<6;i++) L.push(`${('1/0/'+i).padEnd(16)}--  ${'fxs-ls'.padEnd(13)}up    dorm on-hook  idle     y`);
+  return L.join('\n');
+}
+function showDebug(){
+  const L=[];
+  if(S.debug.q931) L.push('ISDN:','  ISDN Q931 packets debugging is on');
+  if(S.debug.vpm) L.push('Voice Port Module:','  Voice Port Module signaling debugging is on');
+  if(S.debug.dp) L.push('Voice:','  voice dialpeer debugging is on');
+  return L.join('\n');
+}
+
+/* ---------- call simulation ---------- */
+const dbgVpm=(port,m)=>['v',`${ts()} htsp_process_event: [${port}(1), E&M_WINK_START] ${m}`];
+const dbgDp=(num,d)=>['d',`${ts()} //-1/xxxxxxxxxxxx/DPM/dpMatchPeersCore: Calling Number=, Called Number=${num}, Peer Info Type=DIALPEER_INFO_SPEECH`+(d?`\n${ts()} //-1/xxxxxxxxxxxx/DPM/dpMatchPeersMoreArg: Result=Success(0); Dial-peer=${d.tag}, pattern=${d.dest}`:`\n${ts()} //-1/xxxxxxxxxxxx/DPM/dpMatchPeersMoreArg: Result=NO_MATCH(-1)`)];
+function q931(dir,msg,called,calling){
+  const L=[`${ts()} ISDN Se${DCH} Q931: ${dir} ${dir==='RX'?'<-':'->'} ${msg} pd = 8  callref = ${dir==='RX'?'0x0012':'0x8012'}`];
+  if(msg==='SETUP') L.push('        Bearer Capability i = 0x8090A2','                Standard = CCITT','                Transfer Capability = Speech',`        Calling Party Number i = 0x2183, '${calling}'`,`        Called Party Number i = 0x81, '${called}'`,'                Plan:ISDN, Type:Unknown');
+  return L.map(l=>['q',l]);
+}
+/* 線路與信令檢查：通過時回傳語音埠，失敗時在 st 寫下原因並回傳 null */
+function lineChecks(st,dir){
+  const L=l1(), sig=sigOf(), fail=m=>{ st.push(['x',m]); return null; };
+  if(!L.up) return fail(`controller T1 0/1/0 沒有起來（${L.why}）`);
+  if(L.warns.includes('linecode')) st.push(['w','linecode 與 FIT-50 不一致，線路有錯誤碼，通話品質可能受影響（模擬）']);
+  if(L.warns.includes('clock')) st.push(['w','時脈設成 internal，與 FIT-50 不同步，會有 slip（模擬）']);
+  if(!sig) return fail('controller 沒有 ds0-group 也沒有 pri-group，沒有可用的語音埠');
+  if(sig!==MODE) return fail(MODE==='cas'
+    ?'FIT-50 這條 T1 是 CAS（E&M wink-start），路由器卻設成 PRI（pri-group），兩邊信令不同，通話建立不起來'
+    :'FIT-50 這條 T1 是 ISDN PRI（CCS），路由器卻還是 CAS（ds0-group），兩邊信令不同，通話建立不起來');
+  if(MODE==='cas'){
+    const g=ds0();
+    if(g.ts!=='1-24') st.push(['w',`ds0-group 只開了 timeslots ${g.ts}，題目是 1-24`]);
+    if(!g.ok){
+      if(g.type==='e&m-immediate-start') return fail(dir==='out'
+        ?'信令是 immediate-start：路由器佔線後立刻送號，沒等 FIT-50 回 wink，FIT-50 還沒準備好收號，號碼遺失（模擬）'
+        :'信令是 immediate-start：FIT-50 佔線後在等 wink，路由器不會回 wink，FIT-50 逾時掛斷（模擬）');
+      return fail(`信令是 ${g.type}，與 FIT-50 的 E&M wink-start 不相容`);
+    }
+    if(S.cfg.voicePorts[g.port].shut) return fail(`voice-port ${g.port} 是 shutdown，語音埠沒有啟用`);
+    return g.port;
+  }
+  const iz=isdnState(), vp=S.cfg.voicePorts[PRI_PORT];
+  if(ctl0().pri!=='1-24') st.push(['w',`pri-group 只開了 timeslots ${ctl0().pri}，題目是 1-24`]);
+  if(iz.ser.shut) return fail(`interface Serial${DCH} 是 shutdown，D 通道沒有起來`);
+  if(!iz.swOk) return fail(`D 通道的 switch-type 是 ${iz.sw||'none'}，FIT-50 用 ${FIT_SW}，ISDN Layer 2 建立不起來（模擬）`);
+  if(vp.shut) return fail(`voice-port ${PRI_PORT} 是 shutdown，B 通道沒有啟用`);
+  if(dir==='in'&&!iz.ser.incoming) return fail(`interface Serial${DCH} 沒有 isdn incoming-voice voice，FIT-50 打進來的電話被當成數據通話，進不了語音流程`);
+  if(vp.compand==='a-law') return fail(`voice-port ${PRI_PORT} 的 compand-type 是 a-law，FIT-50 用 u-law，通話接通後聲音嚴重失真（模擬）`);
+  return PRI_PORT;
+}
+function simA(ext,dialed){
+  const st=[],dbg=[],fail=m=>{ st.push(['x',m]); return {ok:false,st,dbg}; };
+  st.push(['i',`內線 ${ext} 撥 ${dialed}`]);
+  if(!/^\d+$/.test(dialed)) return fail('撥打號碼只能是數字');
+  const ra=SG.routes.find(r=>r.addr===dialed);
+  if(!ra) return fail(`SIGMA 沒有符合 ${dialed} 的 Routing Address，不知道要送到哪條 trunk`);
+  st.push(['v',`SIGMA Routing Address ${ra.addr}（${ra.name||'未命名'}）符合，送往 FIT-50 trunk`]);
+  const t=trunkDest();
+  if(!SG.trunk.trim()) return fail('FIT-50 trunk 沒有設定 Destination URI Address');
+  if(!t) return fail(`Destination URI Address「${SG.trunk.trim()}」格式不對，應為 sip:IP位址:5060`);
+  const mine=Object.keys(S.cfg.loopbacks).map(n=>S.cfg.loopbacks[n].ip).filter(Boolean).map(ip=>ip.addr);
+  if(!mine.includes(t.ip)) return fail(mine.length?`Destination URI 指向 ${t.ip}，不是 Red Router 的 Loopback0（${mine[0]}），INVITE 送不到路由器`:`Destination URI 指向 ${t.ip}，但 Red Router 還沒有設定 Loopback0 位址，INVITE 送不到路由器`);
+  if(t.port!=='5060') return fail(`SIP 埠是 ${t.port}，路由器在 5060 收 SIP`);
+  st.push(['v',`SIGMA 送 SIP INVITE 到 ${t.ip}:5060，被叫 ${dialed}`]);
+  const d=bestPeer(dialed);
+  dbg.push(dbgDp(dialed,d));
+  if(!d) return fail(`路由器沒有可用的 dial-peer 符合 ${dialed}（POTS dial-peer 要有 port 才會生效）`);
+  if(d.type==='voip') return fail(`只符合 dial-peer ${d.tag}（${d.dest}），通話被送回 ${d.target.replace('ipv4:','')}，形成迴圈打不通。要新增指向 FIT-50 的 POTS dial-peer`);
+  const want=actPort();
+  if(d.port!==want) return fail(`符合 dial-peer ${d.tag}（${d.dest}），但 port 是 ${d.port}，不是 FIT-50 的 T1 語音埠${want?' '+want:''}`);
+  const sent=forward(d,dialed);
+  st.push(['v',`符合 dial-peer ${d.tag}（${d.dest}），${fwdDesc(d)}，從 ${d.port} 送出 ${sent||'（空號碼）'}`]);
+  const port=lineChecks(st,'out'); if(!port) return {ok:false,st,dbg};
+  if(MODE==='cas') dbg.push(dbgVpm(port,'TX: SEIZE'),dbgVpm(port,'RX: WINK'),dbgVpm(port,`TX: DIGITS ${sent}`));
+  else dbg.push(...q931('TX','SETUP',sent,ext),...q931('RX','CALL_PROC'),...q931('RX','ALERTING'));
+  if(sent!==Q.fitUser) return fail(`FIT-50 收到 ${sent||'（空號碼）'}，沒有這個用戶`);
+  st.push(['v',`FIT-50 用戶 ${sent} 響鈴`]);
+  return {ok:true,st,dbg};
+}
+function simB(user,dialed){
+  const st=[],dbg=[],fail=m=>{ st.push(['x',m]); return {ok:false,st,dbg}; };
+  st.push(['i',`FIT-50 用戶 ${user} 撥 ${dialed}`]);
+  if(!/^\d+$/.test(dialed)) return fail('撥打號碼只能是數字');
+  const port=lineChecks(st,'in'); if(!port) return {ok:false,st,dbg};
+  if(MODE==='cas'){
+    dbg.push(dbgVpm(port,'RX: SEIZE'),dbgVpm(port,'TX: WINK'),dbgVpm(port,`RX: DIGITS ${dialed}`));
+    st.push(['v',`路由器在 ${port} 收到佔線並回 wink，收到號碼 ${dialed}`]);
+  } else {
+    dbg.push(...q931('RX','SETUP',dialed,user));
+    st.push(['v',`路由器在 D 通道 Serial${DCH} 收到 ISDN SETUP，被叫 ${dialed}`]);
+  }
+  const d=bestPeer(dialed);
+  dbg.push(dbgDp(dialed,d));
+  if(!d) return fail(`路由器沒有 dial-peer 符合 ${dialed}，通話被拒`);
+  if(d.type==='pots') return fail(`符合 dial-peer ${d.tag}（${d.dest}），通話被送回 ${d.port}，沒有送到 SIGMA`);
+  if(/T/i.test(d.dest)) st.push(['i',`dial-peer ${d.tag} 的 ${d.dest} 含 T，路由器會等數字間隔逾時才送出，接通前會有幾秒延遲`]);
+  if(d.target!=='ipv4:'+Q.sigma) return fail(`session target 是 ${d.target.replace('ipv4:','')}，不是節點 ${Q.code} 的 SIGMA 位址`);
+  if(d.proto!=='sipv2') st.push(['w','沒有設定 session protocol sipv2，預設會用 H.323，SIGMA 這條 trunk 是 SIP（模擬）']);
+  if(d.dtmf!=='rtp-nte') st.push(['w','沒有 dtmf-relay rtp-nte，通話中按鍵（DTMF）可能傳不過去']);
+  st.push(['v',`符合 dial-peer ${d.tag}（${d.dest}），送 SIP INVITE 到 ${Q.sigma}`]);
+  if(d.proto!=='sipv2') return fail('SIGMA 不接受 H.323 呼叫，通話失敗（模擬）');
+  if(!Q.exts.includes(dialed)) return fail(`SIGMA 沒有內線 ${dialed}，回覆 404 Not Found`);
+  if(MODE==='ccs') dbg.push(...q931('TX','CALL_PROC'),...q931('TX','ALERTING'));
+  st.push(['v',`SIGMA 內線 ${dialed} 響鈴`]);
+  return {ok:true,st,dbg};
+}
+
+/* ---------- tasks ----------
+   CAS 照文件 01、CCS 照文件 02 的步驟。拆除任務只出現在「從另一種介接方式改過來」的起始狀態。 */
+const TK={
+  conf:{t:'進入特權模式和全域設定模式',h:'<code>enable</code>，再 <code>configure terminal</code>（可縮寫 <code>conf t</code>）。'},
+  gsw:{t:'步驟 1：全域設定 ISDN switch-type',h:'設定模式下 <code>isdn switch-type primary-net5</code>。文件寫成 <code>primary-net</code>，IOS 的指令可以縮寫，會被當成 primary-net5。'},
+  tearCas:{t:'步驟 2：拆掉 CAS（先 shutdown voice-port 0/1/0:1，再移除 ds0-group）',h:'<code>voice-port 0/1/0:1</code> 底下 <code>shutdown</code>，再到 <code>controller T1 0/1/0</code> 下 <code>no ds0-group 1 timeslots 1-24 type e&amp;m-wink-start</code>（或簡寫 <code>no ds0-group 1</code>）。'},
+  tearPri:{t:'先拆掉 PRI（先 shutdown voice-port 0/1/0:23，再移除 pri-group）',h:'<code>voice-port 0/1/0:23</code> 底下 <code>shutdown</code>，再到 <code>controller T1 0/1/0</code> 下 <code>no pri-group timeslots 1-24</code>。D 通道 Serial0/1/0:23 會跟著消失。'},
+  ctl:{t:()=>MODE==='cas'?'步驟 1：設定 controller T1 0/1/0 的實體層':'步驟 3：設定 controller T1 0/1/0 的實體層',h:'<code>controller t1 0/1/0</code>，設定 framing、clock source、linecode、cablelength，參數照上方題目卡。用 <code>show controllers t1 0/1/0</code> 確認沒有告警。'},
+  ds0:{t:'步驟 1：設定 ds0-group，信令用 E&amp;M wink-start',h:'<code>ds0-group 1 timeslots 1-24 type e&amp;m-wink-start</code>。文件寫成 e&amp;m-winkstart，模擬器以另一站實際組態的 e&amp;m-wink-start 為準，實機請用 ? 確認。設好後 <code>show voice port summary</code> 會出現 0/1/0:1。'},
+  pri:{t:'步驟 3：設定 pri-group，改成 PRI 模式',h:'<code>controller T1 0/1/0</code> 底下 <code>pri-group timeslots 1-24</code>。文件寫成 timelots，正確是 timeslots。設好後會產生 D 通道 Serial0/1/0:23 和 voice-port 0/1/0:23。'},
+  compand:{t:'步驟 4：voice-port 0/1/0:23 的 compand-type 設為 u-law',h:'<code>voice-port 0/1/0:23</code> 底下 <code>compand-type u-law</code>。'},
+  dch:{t:'步驟 5：設定 D 通道 interface Serial0/1/0:23',h:'<code>interface Serial0/1/0:23</code> 底下 <code>no ip address</code>、<code>encapsulation ppp</code>、<code>isdn switch-type primary-net5</code>、<code>isdn incoming-voice voice</code>。'},
+  lo:{t:'設定 Loopback0 的 IP 位址',h:'<code>interface Loopback0</code>，再用 <code>ip address</code> 設定位址，遮罩 <code>255.255.255.255</code>。位址由題目卡的節點編號換算，例如 345 → 3.4.5.2。設好用 <code>show ip interface brief</code> 確認。'},
+  dp100:{t:()=>MODE==='cas'?'步驟 2.1：FIT-50 打 VoIP 的 dial-peer 100':'步驟 6.1：FIT-50 打 VoIP 的 dial-peer 100',h:'<code>dial-peer voice 100 voip</code>，設定 destination-pattern、session protocol、session target、session transport、dtmf-relay、codec，最後 <code>no vad</code>。'},
+  dp900:{t:()=>MODE==='cas'?'步驟 2.2：VoIP 打 FIT-50 的 dial-peer 900':'步驟 6.2：VoIP 打 FIT-50 的 dial-peer 900（port 改成 0/1/0:23）',h:()=>`<code>dial-peer voice 900 pots</code>，<code>destination-pattern</code> 要涵蓋題目卡的 FIT-50 用戶號碼（例如前三碼加 <code>...</code>）、<code>port ${MODE==='cas'?'0/1/0:1':PRI_PORT}</code>，記得 <code>forward-digits all</code>，否則預設會把 pattern 開頭的數字去掉。`},
+  trunk:{t:()=>MODE==='cas'?'步驟 3.1：SIGMA 的 FIT-50 trunk 指向 Loopback0':'步驟 7.1：SIGMA 的 FIT-50 trunk 指向 Loopback0',h:'到 SIGMA 分頁，Destination URI Address 填 <code>sip:Loopback0位址:5060</code>。Loopback0 位址可以用 <code>show ip interface brief</code> 查。'},
+  route:{t:()=>MODE==='cas'?'步驟 3.2：SIGMA 新增 Routing Address':'步驟 7.2：SIGMA 新增 Routing Address',h:()=>'到 SIGMA 分頁新增 Address <code>'+Q.fitUser+'</code>，Name 填 FIT-50。'},
+  callA:{t:()=>`步驟 ${MODE==='cas'?'4.1':'8.1'}：VoIP 撥 ${Q.fitUser} 打通 FIT-50`,h:()=>'到模擬通話分頁按「VoIP 打 FIT-50」的撥出。失敗時看每一步的原因，或開 <code>debug voice dialpeer</code>'+(MODE==='ccs'?'、<code>debug isdn q931</code>':'')+'。'},
+  callB:{t:()=>`步驟 ${MODE==='cas'?'4.2':'8.2'}：FIT-50 撥 ${Q.exts[0]} 打通 VoIP`,h:()=>'到模擬通話分頁按「FIT-50 打 VoIP」的撥出。'+(MODE==='cas'?'可以開 <code>debug vpm signal</code> 看 seize 和 wink。':'可以開 <code>debug isdn q931</code> 看 SETUP。')},
+  save:{t:'存檔',h:'<code>write memory</code> 或 <code>copy running-config startup-config</code>。'}
+};
+function taskIds(){
+  const swap=START==='swap';
+  return MODE==='cas'
+    ?['conf',...(swap?['tearPri']:[]),'ctl','ds0','lo','dp100','dp900','trunk','route','callA','callB','save']
+    :['conf','gsw',...(swap?['tearCas']:[]),'ctl','pri','compand','dch','lo','dp100','dp900','trunk','route','callA','callB','save'];
+}
+
+/* 分三層的提示：a 方向、b 用哪個指令、c 完整指令。見 cli-core.js 的 createTerminal 說明 */
+const failOf=r=>(r.st.filter(([k])=>k==='x').pop()||['',''])[1];
+const atCtl={mode:'ctl',enter:'controller t1 0/1/0',at:c=>c&&c.name==='0/1/0'};
+const atDp=(tag,type)=>({mode:'dp',enter:`dial-peer voice ${tag} ${type}`,at:c=>c&&c.tag===tag});
+const atVp=p=>({mode:'vp',enter:'voice-port '+p,at:c=>c&&c.name===p});
+const atSer={mode:'if',enter:'interface Serial'+DCH,at:c=>c&&c.name===DCH};
+/* 列出 dial-peer 還沒設好的項目：want 是 [欄位, 正確值或判斷函式, 指令] */
+function missing(d,type,want){
+  const c=[];
+  if(d&&d.type!==type) c.push(`（dial-peer ${d.tag} 已經是 ${d.type}，先在設定模式用 no dial-peer voice ${d.tag} 刪掉）`);
+  want.forEach(([k,v,cmd])=>{ if(!d||d.type!==type||!(typeof v==='function'?v(d[k]):d[k]===v)) c.push(cmd); });
+  return c;
+}
+/* 拆除的提示：先 shutdown 語音埠，再到 controller 移除 */
+function tearHint(port,removeCmd,what,why){
+  const vp=S.cfg.voicePorts[port];
+  if(vp&&!vp.shut) return {where:atVp(port),a:why,b:`拆掉${what}之前，要先讓語音埠停用：到 voice-port ${port} 下 shutdown，再到 controller 移除${what}。`,c:['shutdown']};
+  return {where:atCtl,a:why,b:`voice-port ${port} 已經 shutdown，接著到 controller T1 0/1/0 用 no 移除${what}。`,c:[removeCmd]};
+}
+const needPri={where:atCtl,a:'要先在 controller 設定 pri-group，才會有 D 通道和 voice-port 0/1/0:23。',b:'在 controller T1 0/1/0 底下設定 pri-group timeslots。',c:['pri-group timeslots 1-24']};
+const HINTS={
+  conf:()=>({where:{mode:'config'},a:'要先進入設定模式，才能修改路由器的設定。',b:'enable 進入特權模式（提示字元變成 #），再用 configure terminal 進入設定模式。',c:['照上面的順序輸入。configure terminal 可以縮寫成 conf t，提示字元變成 (config)# 就完成了。']}),
+  gsw:()=>({where:{mode:'config'},a:'CCS 走的是 ISDN PRI，路由器要知道對端用哪一種 ISDN 交換標準。文件步驟 1 先在全域設定。',b:'在設定模式用 isdn switch-type，FIT-50 用的是 NET5，打 isdn switch-type ? 看選項。',c:['isdn switch-type primary-net5']}),
+  tearCas:()=>tearHint('0/1/0:1','no ds0-group 1 timeslots 1-24 type e&m-wink-start',' ds0-group','FIT-50 已經改成 ISDN PRI，路由器原本 CAS 的 ds0-group 要先拆掉，時槽才能給 pri-group 用。'),
+  tearPri:()=>tearHint(PRI_PORT,'no pri-group timeslots 1-24',' pri-group','FIT-50 已經改成 CAS，路由器原本的 pri-group 要先拆掉，時槽才能給 ds0-group 用。'),
+  ctl:()=>{
+    const c=ctl0(), miss=[];
+    if(c.framing!=='esf') miss.push('framing esf');
+    if(c.linecode!=='b8zs') miss.push('linecode b8zs');
+    if(c.clock!=='line primary') miss.push('clock source line primary');
+    if(c.cable!=='short 110') miss.push('cablelength short 110');
+    return {where:atCtl,a:'controller T1 0/1/0 的實體層參數要跟 FIT-50 一致，線路才會起來。先用 show controllers t1 0/1/0 看告警。',b:`到 controller 底下設定 framing、linecode、clock source、cablelength 四項，每一項都可以打 ? 看選項。還有 ${miss.length} 項沒設好。`,c:miss};
+  },
+  ds0:()=>{
+    if(ctl0().pri) return HINTS.tearPri();
+    const g=ctl0().ds0, c=[];
+    if(g&&g.num!=='1') c.push(`no ds0-group ${g.num}`);
+    c.push('ds0-group 1 timeslots 1-24 type e&m-wink-start');
+    return {where:atCtl,a:'controller 要設定 ds0-group 才會產生語音埠，信令要跟 FIT-50 一樣用 E&M wink-start。',b:'在 controller 底下用 ds0-group：channel 用 1、timeslots 用 1-24，type 打 ? 找 wink-start 那一個。',c};
+  },
+  pri:()=>ctl0().ds0?HINTS.tearCas():{where:atCtl,a:'CCS 用 ISDN PRI：controller 要設定 pri-group，第 24 個時槽會成為 D 通道（Serial0/1/0:23）。',b:'在 controller T1 0/1/0 底下用 pri-group timeslots，T1 全部 24 個時槽都要開。',c:['pri-group timeslots 1-24']},
+  compand:()=>S.cfg.voicePorts[PRI_PORT]?{where:atVp(PRI_PORT),a:'G.711 有 a-law 和 u-law 兩種編碼，要跟 FIT-50 一致，文件指定 u-law。',b:`到 voice-port ${PRI_PORT} 用 compand-type 設定。`,c:['compand-type u-law']}:needPri,
+  dch:()=>{
+    const s=S.cfg.serials[DCH]; if(!s) return needPri;
+    const miss=[];
+    if(!s.noip) miss.push('no ip address');
+    if(s.encap!=='ppp') miss.push('encapsulation ppp');
+    if(s.sw!==FIT_SW) miss.push('isdn switch-type primary-net5');
+    if(!s.incoming) miss.push('isdn incoming-voice voice');
+    return {where:atSer,a:'PRI 的信令走 D 通道，也就是 interface Serial0/1/0:23。路由器預設是 user（從）端，FIT-50 是 network 端。',b:`到 interface Serial0/1/0:23，照文件步驟 5 設定 ip address、encapsulation、isdn switch-type、isdn incoming-voice。還有 ${miss.length} 項沒設好。`,c:miss};
+  },
+  lo:()=>{
+    const l=S.cfg.loopbacks['0'], now=l&&l.ip?`目前設成 ${l.ip.addr} ${l.ip.mask}，跟題目不同。`:'';
+    return {where:{mode:'lo',enter:'interface Loopback0',at:c=>c&&c.num==='0'},a:'SIGMA 會把 SIP 送到路由器的 Loopback0，要先給 Loopback0 一個位址。位址要用題目卡上的節點編號換算。',b:`用 interface Loopback0 建立介面，再用 ip address 設定位址和遮罩（/32，遮罩 255.255.255.255）。換算規則：三位數節點編號拆成三段再加 .2，例如 345 → 3.4.5.2。${now}`,c:[`ip address ${Q.loop} 255.255.255.255`]};
+  },
+  dp100:()=>{
+    const d=S.cfg.dialPeers.find(x=>x.tag==='100');
+    const c=missing(d,'voip',[['dest','.T','destination-pattern .T'],['proto','sipv2','session protocol sipv2'],['target','ipv4:'+Q.sigma,'session target ipv4:'+Q.sigma],['transport','udp','session transport udp'],['dtmf','rtp-nte','dtmf-relay rtp-nte'],['codec','g711ulaw','codec g711ulaw'],['vad',false,'no vad']]);
+    return {where:atDp('100','voip'),a:'FIT-50 打進來的電話，路由器要用一個 VoIP dial-peer 送到 SIGMA。',b:`建立 dial-peer voice 100 voip，設定 destination-pattern、session protocol / target / transport、dtmf-relay、codec，最後關掉 vad。SIGMA 的位址由節點編號換算：10.211.(節點編號-300).124，例如 345 → 10.211.45.124。還有 ${c.length} 項沒設好。`,c};
+  },
+  dp900:()=>{
+    const port=MODE==='cas'?(ds0()||{}).port:(ctl0().pri?PRI_PORT:null);
+    if(!port) return MODE==='cas'?HINTS.ds0():HINTS.pri();
+    const d=S.cfg.dialPeers.find(x=>x.tag==='900');
+    const c=missing(d,'pots',[['dest',fitPatOk,'destination-pattern '+fitPat()],['port',port,'port '+port],['fwd','all','forward-digits all']]);
+    const bad=d&&d.dest&&!fitPatOk(d.dest)?`目前的 destination-pattern ${d.dest} ${CliCore.patInfo(d.dest)&&CliCore.patInfo(d.dest).re.test(Q.fitUser)?'範圍太大，連 SIGMA 內線也比對得到':'比對不到 FIT-50 用戶 '+Q.fitUser}。`:'';
+    const moved=d&&!d.port&&START==='swap'?'原本的 port 在拆除時被清掉了，要重新指定。':'';
+    return {where:atDp('900','pots'),a:`SIGMA 打 FIT-50 用戶 ${Q.fitUser} 的電話，路由器要用一個 POTS dial-peer 從 T1 語音埠 ${port} 送出去。${moved}`,b:`在 dial-peer voice 900 pots 設定 destination-pattern、port、forward-digits。pattern 要比對得到 ${Q.fitUser}，常見寫法是前三碼加 ...（一個點代表一位數字）。沒設 forward-digits 的話，預設會把 pattern 開頭的數字去掉。${bad}`,c};
+  },
+  trunk:()=>({where:{tab:'sigma',name:'SIGMA'},a:'SIGMA 要知道 FIT-50 trunk 的 SIP 要送到哪裡，答案是路由器的 Loopback0。',b:'就是路由器 Loopback0 的位址（由節點編號換算），可以在終端機用 show ip interface brief 確認。到 SIGMA 分頁填 Destination URI Address，格式是 sip:位址:5060。',c:[`Destination URI Address 填 sip:${Q.loop}:5060，按 Save My Changes`]}),
+  route:()=>({where:{tab:'sigma',name:'SIGMA'},a:`SIGMA 要有一筆 Routing Address，才知道撥 ${Q.fitUser} 要送往 FIT-50 trunk。`,b:'到 SIGMA 分頁的 Routing Address 區塊新增一筆，號碼是題目卡上的 FIT-50 用戶。',c:[`Address 填 ${Q.fitUser}，Name 填 FIT-50，按 Save Changes`]}),
+  callA:()=>{ const r=simA(Q.exts[0],Q.fitUser); return {where:{tab:'call',name:'模擬通話'},a:'設定都做完了，實際撥一通「VoIP 打 FIT-50」驗證。',b:r.ok?'目前的設定可以打通，到模擬通話分頁按「VoIP 打 FIT-50」的撥出。':`現在撥會失敗：${failOf(r)}`,c:r.ok?[`發話內線 ${Q.exts[0]}、撥打號碼 ${Q.fitUser}，按撥出`]:[`失敗原因：${failOf(r)}`,`修好之後，發話內線 ${Q.exts[0]}、撥打號碼 ${Q.fitUser}，按撥出`]}; },
+  callB:()=>{ const r=simB(Q.fitUser,Q.exts[0]); return {where:{tab:'call',name:'模擬通話'},a:'實際撥一通「FIT-50 打 VoIP」驗證另一個方向。',b:r.ok?'目前的設定可以打通，到模擬通話分頁按「FIT-50 打 VoIP」的撥出。':`現在撥會失敗：${failOf(r)}`,c:r.ok?[`FIT-50 用戶 ${Q.fitUser}、撥打號碼 ${Q.exts[0]}，按撥出`]:[`失敗原因：${failOf(r)}`,`修好之後，FIT-50 用戶 ${Q.fitUser}、撥打號碼 ${Q.exts[0]}，按撥出`]}; },
+  save:()=>({where:{mode:'priv'},a:'設定還沒存檔，重開機就會不見。',b:'在特權模式把 running-config 存到 startup-config。',c:['write memory（或 copy running-config startup-config）']})
+};
+let TASKS=[];
+const buildTasks=()=>{ TASKS=taskIds().map(id=>Object.assign({id,g:HINTS[id]},TK[id])); };
+
+function evalTasks(){
+  const c=ctl0(), g=ds0(), L=l1(), s=S.cfg.serials[DCH], vpP=S.cfg.voicePorts[PRI_PORT];
+  const d100=S.cfg.dialPeers.find(d=>d.tag==='100'), d900=S.cfg.dialPeers.find(d=>d.tag==='900');
+  const t=trunkDest(), l0=S.cfg.loopbacks['0'];
+  const port=MODE==='cas'?(g&&g.port):(c.pri?PRI_PORT:null);
+  return {
+    conf:S.flags.conf,
+    gsw:S.cfg.globalSwitch===FIT_SW,
+    tearCas:!c.ds0,
+    tearPri:!c.pri,
+    ctl:L.up&&!L.warns.length&&c.clock==='line primary'&&c.cable==='short 110',
+    ds0:!!g&&g.ok&&g.ts==='1-24'&&g.num==='1',
+    pri:c.pri==='1-24',
+    compand:!!vpP&&vpP.compand==='u-law',
+    dch:!!s&&s.noip&&s.encap==='ppp'&&s.sw===FIT_SW&&s.incoming,
+    lo:!!(l0&&l0.ip&&l0.ip.addr===Q.loop&&l0.ip.mask==='255.255.255.255'),
+    dp100:!!d100&&d100.type==='voip'&&d100.dest==='.T'&&d100.proto==='sipv2'&&d100.target==='ipv4:'+Q.sigma&&d100.transport==='udp'&&d100.dtmf==='rtp-nte'&&d100.codec==='g711ulaw'&&d100.vad===false,
+    dp900:!!d900&&d900.type==='pots'&&fitPatOk(d900.dest)&&!!port&&d900.port===port&&d900.fwd==='all',
+    trunk:!!t&&t.ip===Q.loop&&t.port==='5060',
+    route:SG.routes.some(r=>r.addr===Q.fitUser),
+    callA:S.flags.callA&&simA(Q.exts[0],Q.fitUser).ok,
+    callB:S.flags.callB&&simB(Q.fitUser,Q.exts[0]).ok,
+    save:S.flags.saved&&!S.dirty
+  };
+}
+function refresh(){
+  $('#prompt').textContent=T.promptStr();
+  const L=l1(), sig=sigOf();
+  setLed('ledL1',L.up?(L.warns.length?'warn':'on'):'bad');
+  if(sig==='cas'){ const g=ds0(); setLed('ledSig',MODE!=='cas'||!g.ok?'bad':(L.up?'on':'warn')); $('#lblSig').textContent=`CAS ${g.type.replace('e&m-','E&M ')}`; }
+  else if(sig==='ccs'){ setLed('ledSig',isdnState().up?'on':'bad'); $('#lblSig').textContent='ISDN L2'; }
+  else { setLed('ledSig',''); $('#lblSig').textContent='T1 信令未設定'; }
+  setLed('ledSave',S.dirty?'warn':'');
+  $('#lblSave').textContent=S.dirty?'未存檔':'已存檔';
+  T.renderTasks(TASKS,evalTasks());
+}
+
+/* ---------- side panel ---------- */
+function renderSigma(){
+  $('#sgUri').value=SG.trunk;
+  $('#sgUriNow').textContent=SG.trunk.trim()?`目前生效：${SG.trunk.trim()}`:'目前生效：（未設定）';
+  const tb=$('#raList'); tb.innerHTML='';
+  if(!SG.routes.length){ const tr=document.createElement('tr'); tr.innerHTML='<td colspan="3" class="empty">還沒有 Routing Address</td>'; tb.appendChild(tr); }
+  SG.routes.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td></td><td></td><td><button class="del" aria-label="刪除 ${r.addr}">刪除</button></td>`;
+    tr.children[0].textContent=r.addr; tr.children[1].textContent=r.name;
+    tr.querySelector('button').addEventListener('click',()=>{ SG.routes.splice(i,1); renderSigma(); refresh(); });
+    tb.appendChild(tr);
+  });
+}
+$('#sgUriSave').addEventListener('click',()=>{ SG.trunk=$('#sgUri').value; renderSigma(); refresh(); });
+$('#raSave').addEventListener('click',()=>{
+  const a=$('#raAddr').value.trim(), n=$('#raName').value.trim();
+  if(!/^\d+$/.test(a)){ $('#raMsg').textContent='Address 要填數字號碼。'; return; }
+  if(SG.routes.some(r=>r.addr===a)){ $('#raMsg').textContent=`${a} 已經存在。`; return; }
+  SG.routes.push({addr:a,name:n}); $('#raMsg').textContent=`已新增 ${a}。`; $('#raAddr').value=''; renderSigma(); refresh();
+});
+const renderTrace=(title,r)=>T.renderTrace(title,r,k=>(k==='v'&&S.debug.vpm)||(k==='d'&&S.debug.dp)||(k==='q'&&S.debug.q931));
+$('#btnA').addEventListener('click',()=>{
+  const e=$('#aExt').value.trim(), n=$('#aNum').value.trim(), r=simA(e,n);
+  if(r.ok&&n===Q.fitUser) S.flags.callA=true;
+  renderTrace(`內線 ${e} 撥 ${n}`,r); refresh();
+});
+$('#btnB').addEventListener('click',()=>{
+  const u=$('#bUser').value.trim(), n=$('#bNum').value.trim(), r=simB(u,n);
+  if(r.ok&&n===Q.exts[0]) S.flags.callB=true;
+  renderTrace(`FIT-50 ${u} 撥 ${n}`,r); refresh();
+});
+
+/* ---------- 練習切換、題目卡與畫面文字 ---------- */
+function showPractice(){
+  const ccs=MODE==='ccs';
+  document.title=`CN 與 FIT-50 介接（${NAME[MODE]}）練習器`;
+  $('#lead').textContent=`CN 與 FIT-50 介接（${ccs?'T1 CCS，ISDN PRI，照文件 02':'T1 CAS，E&M wink-start，照文件 01'}）。照右側題目卡的數值設定路由器和 SIGMA。Tab 補齊、? 查選項。`;
+  $('#selMode').value=MODE;
+  $('#selStart').innerHTML=`<option value="factory">出廠預設，從頭設定</option><option value="swap">已設定好 ${NAME[other(MODE)]}，改成 ${NAME[MODE]}</option>`;
+  $('#selStart').value=START;
+  $('#aExt').value=Q.exts[0]; $('#aNum').value=Q.fitUser; $('#bUser').value=Q.fitUser; $('#bNum').value=Q.exts[0];
+  $('#sigExts').textContent=Q.exts.join('、'); $('#fitUserNote').textContent=Q.fitUser;
+  $('#fitSide').textContent=ccs?'FIT-50 端為 T1 esf、b8zs、ISDN PRI（primary-net5，network 端、u-law），':'FIT-50 端為 T1 esf、b8zs、E&M wink-start，';
+  $('#dbgNote').innerHTML=ccs?'<code>debug isdn q931</code>':'<code>debug vpm signal</code>';
+  const t1=['framing esf、linecode b8zs','clock source line primary','cablelength short 110'];
+  T.renderQuiz('按下方「重設練習」會換一組',[
+    ['節點編號',Q.code],
+    ['T1 0/1/0',ccs?t1.concat('pri-group timeslots 1-24'):t1.concat('ds0-group 1，timeslots 1-24','信令 E&M wink-start')],
+    ...(ccs?[['ISDN',['switch-type primary-net5（全域與 D 通道）','D 通道 Serial0/1/0:23：no ip address、encapsulation ppp、isdn incoming-voice voice','voice-port 0/1/0:23：compand-type u-law']]]:[]),
+    ['SIGMA',['SIP over UDP','codec g711ulaw、dtmf-relay rtp-nte、no vad','內線 '+Q.exts.join('、')]],
+    ['FIT-50 用戶',Q.fitUser]
+  ]);
+}
+function welcome(){
+  print(`LAB-RTR-B 模擬器：CN 與 FIT-50 介接（${NAME[MODE]}）`,'dim');
+  print('Tab 補齊指令或列出選項，? 查看可用參數，↑↓ 叫出歷史指令，Ctrl+Z 回到特權模式。','dim');
+  print('卡住時按下方的「提示」或輸入 hint，每多按一次會說得更具體。','hint');
+  if(START==='factory') print('controller T1 0/1/0 目前是出廠預設值，dial-peer 也還沒建立。先輸入 enable 開始。\n','dim');
+  else if(MODE==='ccs') print('這台路由器目前是照文件 01 設定好的 CAS（ds0-group、E&M wink-start）。FIT-50 已經改成 ISDN PRI，請照文件 02 把路由器改成 CCS。先輸入 enable，可以用 show running-config 看目前的設定。\n','dim');
+  else print('這台路由器目前是照文件 02 設定好的 CCS（pri-group、ISDN PRI）。FIT-50 已經改回 CAS（E&M wink-start），請把路由器改成 CAS。先輸入 enable，可以用 show running-config 看目前的設定。\n','dim');
+}
+/* 重新開始：出新題目、照目前的練習與起始狀態建立路由器 */
+function restart(){
+  rollQuiz(); fresh(); buildTasks(); T.clear(); $('#raMsg').textContent='';
+  showPractice(); renderSigma(); welcome(); refresh();
+  try{ const u=new URL(location.href); u.searchParams.set('mode',MODE); u.searchParams.set('start',START); history.replaceState(null,'',u); }catch(e){}
+}
+$('#btnReset').addEventListener('click',()=>{ restart(); T.focus(); });
+$('#selMode').addEventListener('change',e=>{ MODE=e.target.value; START=MODE==='ccs'?'swap':'factory'; restart(); });
+$('#selStart').addEventListener('change',e=>{ START=e.target.value; restart(); });
+
+buildTasks(); showPractice(); renderSigma(); welcome(); refresh();
+T.focus({preventScroll:true});
+})();
+</script>
+</body>
+</html>
