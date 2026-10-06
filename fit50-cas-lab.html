@@ -375,7 +375,7 @@ function removeDs0(num){
 function dpRoots(){
   const dp=()=>S.cfg.dialPeers.find(d=>d.tag===S.ctx.tag);
   const del=k=>(v,x)=>{ delete dp()[k]; mark(); };
-  const n=T.dialPeerNodes(dp,'900...');
+  const n=T.dialPeerNodes(dp,'512...');
   const l=[n.description,n.destination];
   if(dp().type==='pots') l.push(n.forwardDigits,n.port);
   else {
@@ -570,7 +570,7 @@ const TASKS=[
   {id:'ds0',t:'步驟 1：設定 ds0-group，信令用 E&amp;M wink-start',h:'<code>ds0-group 1 timeslots 1-24 type e&amp;m-wink-start</code>。文件寫成 e&amp;m-winkstart，模擬器以 另一站實際組態的 e&amp;m-wink-start 為準，實機請用 ? 確認。設好後 <code>show voice port summary</code> 會出現 0/1/0:1。'},
   {id:'lo',t:'步驟 1：設定 Loopback0 的 IP 位址',h:'<code>interface Loopback0</code>，再用 <code>ip address</code> 設定位址，遮罩 <code>255.255.255.255</code>。位址由題目卡的節點編號換算，例如 345 → 3.4.5.2。設好用 <code>show ip interface brief</code> 確認。'},
   {id:'dp100',t:'步驟 2.1：FIT-50 打 VoIP 的 dial-peer 100',h:'<code>dial-peer voice 100 voip</code>，設定 destination-pattern、session protocol、session target、session transport、dtmf-relay、codec，最後 <code>no vad</code>。'},
-  {id:'dp900',t:'步驟 2.2：VoIP 打 FIT-50 的 dial-peer 900',h:'<code>dial-peer voice 900 pots</code>，<code>destination-pattern 900...</code>、<code>port 0/1/0:1</code>，記得 <code>forward-digits all</code>，否則預設會把 900 去掉。'},
+  {id:'dp900',t:'步驟 2.2：VoIP 打 FIT-50 的 dial-peer 900',h:()=>'<code>dial-peer voice 900 pots</code>，<code>destination-pattern</code> 要涵蓋題目卡的 FIT-50 用戶號碼（例如前三碼加 <code>...</code>）、<code>port 0/1/0:1</code>，記得 <code>forward-digits all</code>，否則預設會把 pattern 開頭的數字去掉。'},
   {id:'trunk',t:'步驟 3.1：SIGMA 的 FIT-50 trunk 指向 Loopback0',h:'到 SIGMA 分頁，Destination URI Address 填 <code>sip:Loopback0位址:5060</code>。Loopback0 位址可以用 <code>show ip interface brief</code> 查。'},
   {id:'route',t:'步驟 3.2：SIGMA 新增 Routing Address',h:()=>'到 SIGMA 分頁新增 Address <code>'+Q.fitUser+'</code>，Name 填 FIT-50。'},
   {id:'callA',t:()=>`步驟 4.1：VoIP 撥 ${Q.fitUser} 打通 FIT-50`,h:'到模擬通話分頁按「VoIP 打 FIT-50」的撥出。失敗時看每一步的原因，或開 <code>debug voice dialpeer</code>。'},
@@ -581,13 +581,16 @@ const TASKS=[
 const failOf=r=>(r.st.filter(([k])=>k==='x').pop()||['',''])[1];
 const atCtl={mode:'ctl',enter:'controller t1 0/1/0',at:c=>c&&c.name==='0/1/0'};
 const atDp=(tag,type)=>({mode:'dp',enter:`dial-peer voice ${tag} ${type}`,at:c=>c&&c.tag===tag});
-/* 列出 dial-peer 還沒設好的項目：want 是 [欄位, 正確值, 指令] */
+/* 列出 dial-peer 還沒設好的項目：want 是 [欄位, 正確值或判斷函式, 指令] */
 function missing(d,type,want){
   const c=[];
   if(d&&d.type!==type) c.push(`（dial-peer ${d.tag} 已經是 ${d.type}，先在設定模式用 no dial-peer voice ${d.tag} 刪掉）`);
-  want.forEach(([k,v,cmd])=>{ if(!d||d.type!==type||d[k]!==v) c.push(cmd); });
+  want.forEach(([k,v,cmd])=>{ if(!d||d.type!==type||!(typeof v==='function'?v(d[k]):d[k]===v)) c.push(cmd); });
   return c;
 }
+/* dial-peer 900 的 destination-pattern：要比對得到 FIT-50 用戶，又不能把 SIGMA 內線也吃進來（否則 FIT-50 打 VoIP 會被繞回 T1） */
+function fitPatOk(p){ const pi=p&&CliCore.patInfo(p); return !!pi&&pi.re.test(Q.fitUser)&&!Q.exts.some(x=>pi.re.test(x)); }
+const fitPat=()=>Q.fitUser.slice(0,3)+'...';
 const HINTS={
   conf:()=>({where:{mode:'config'},a:'要先進入設定模式，才能修改路由器的設定。',b:'enable 進入特權模式（提示字元變成 #），再用 configure terminal 進入設定模式。',c:['照上面的順序輸入。configure terminal 可以縮寫成 conf t，提示字元變成 (config)# 就完成了。']}),
   ctl:()=>{
@@ -617,8 +620,9 @@ const HINTS={
     const g=ds0();
     if(!g) return {where:atCtl,a:'dial-peer 900 要指向 T1 的語音埠，但 controller 還沒有 ds0-group。',b:'先到 controller 底下設定 ds0-group。',c:['ds0-group 1 timeslots 1-24 type e&m-wink-start']};
     const d=S.cfg.dialPeers.find(x=>x.tag==='900');
-    const c=missing(d,'pots',[['dest','900...','destination-pattern 900...'],['port',g.port,'port '+g.port],['fwd','all','forward-digits all']]);
-    return {where:atDp('900','pots'),a:'SIGMA 打 FIT-50 的電話，路由器要用一個 POTS dial-peer 從 T1 語音埠送出去。',b:'建立 dial-peer voice 900 pots，設定 destination-pattern、port、forward-digits。沒設 forward-digits 的話，預設會把開頭的 900 去掉。',c};
+    const c=missing(d,'pots',[['dest',fitPatOk,'destination-pattern '+fitPat()],['port',g.port,'port '+g.port],['fwd','all','forward-digits all']]);
+    const bad=d&&d.dest&&!fitPatOk(d.dest)?`目前的 destination-pattern ${d.dest} ${CliCore.patInfo(d.dest)&&CliCore.patInfo(d.dest).re.test(Q.fitUser)?'範圍太大，連 SIGMA 內線也比對得到':'比對不到 FIT-50 用戶 '+Q.fitUser}。`:'';
+    return {where:atDp('900','pots'),a:`SIGMA 打 FIT-50 用戶 ${Q.fitUser} 的電話，路由器要用一個 POTS dial-peer 從 T1 語音埠送出去。`,b:`建立 dial-peer voice 900 pots，設定 destination-pattern、port、forward-digits。pattern 要比對得到 ${Q.fitUser}，常見寫法是前三碼加 ...（一個點代表一位數字）。沒設 forward-digits 的話，預設會把 pattern 開頭的數字去掉。${bad}`,c};
   },
   trunk:()=>({where:{tab:'sigma',name:'SIGMA'},a:'SIGMA 要知道 FIT-50 trunk 的 SIP 要送到哪裡，答案是路由器的 Loopback0。',b:'就是路由器 Loopback0 的位址（由節點編號換算），可以在終端機用 show ip interface brief 確認。到 SIGMA 分頁填 Destination URI Address，格式是 sip:位址:5060。',c:[`Destination URI Address 填 sip:${Q.loop}:5060，按 Save My Changes`]}),
   route:()=>({where:{tab:'sigma',name:'SIGMA'},a:`SIGMA 要有一筆 Routing Address，才知道撥 ${Q.fitUser} 要送往 FIT-50 trunk。`,b:'到 SIGMA 分頁的 Routing Address 區塊新增一筆，號碼是題目卡上的 FIT-50 用戶。',c:[`Address 填 ${Q.fitUser}，Name 填 FIT-50，按 Save Changes`]}),
@@ -638,7 +642,7 @@ function evalTasks(){
     ds0:!!g&&g.ok&&g.ts==='1-24'&&g.num==='1',
     lo:!!(l0&&l0.ip&&l0.ip.addr===Q.loop&&l0.ip.mask==='255.255.255.255'),
     dp100:!!d100&&d100.type==='voip'&&d100.dest==='.T'&&d100.proto==='sipv2'&&d100.target==='ipv4:'+Q.sigma&&d100.transport==='udp'&&d100.dtmf==='rtp-nte'&&d100.codec==='g711ulaw'&&d100.vad===false,
-    dp900:!!d900&&d900.type==='pots'&&d900.dest==='900...'&&!!g&&d900.port===g.port&&d900.fwd==='all',
+    dp900:!!d900&&d900.type==='pots'&&fitPatOk(d900.dest)&&!!g&&d900.port===g.port&&d900.fwd==='all',
     trunk:!!t&&t.ip===Q.loop&&t.port==='5060',
     route:SG.routes.some(r=>r.addr===Q.fitUser),
     callA:S.flags.callA&&simA(Q.exts[0],Q.fitUser).ok,
@@ -689,10 +693,10 @@ $('#btnB').addEventListener('click',()=>{
   renderTrace(`FIT-50 ${u} 撥 ${n}`,r); refresh();
 });
 /* 出新題目：Loopback0 與 SIGMA 位址都由節點編號換算（見 cli-core.js 的 node），題目卡只給編號。
-   FIT-50 用戶維持 900 開頭（配合 destination-pattern 900...），SIGMA 內線是 3602 開頭的連號 */
+   FIT-50 用戶是隨機 6 碼（不以 0、3 開頭，避開 SIGMA 的 3602 內線），SIGMA 內線是 3602 開頭的連號 */
 function newQuiz(){
   const {rnd,pad,node}=CliCore, e=rnd(1,98), code=node.pick();
-  Q={code,loop:node.loop(code),sigma:node.voip(code),fitUser:'900'+pad(rnd(0,999),3),exts:['3602'+pad(e,2),'3602'+pad(e+1,2)]};
+  Q={code,loop:node.loop(code),sigma:node.voip(code),fitUser:'12456789'[rnd(0,7)]+pad(rnd(0,99999),5),exts:['3602'+pad(e,2),'3602'+pad(e+1,2)]};
   $('#aExt').value=Q.exts[0]; $('#aNum').value=Q.fitUser; $('#bUser').value=Q.fitUser; $('#bNum').value=Q.exts[0];
   $('#sigExts').textContent=Q.exts.join('、'); $('#fitUserNote').textContent=Q.fitUser;
   T.renderQuiz('按下方「重設練習」會換一組',[
