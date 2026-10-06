@@ -340,6 +340,7 @@ function createTerminal(o){
       $('#tab-'+x.dataset.tab).hidden=x!==b;
     });
   }));
+  const val=x=>typeof x==='function'?x():x;
   const openHints=new Set();
   let lastTasks=[], lastResults={};
   function renderTasks(tasks,results){
@@ -349,13 +350,27 @@ function createTerminal(o){
     tasks.forEach(t=>{
       const done=!!results[t.id]; if(done) n++;
       const li=document.createElement('li'); if(done) li.className='done'; else if(t===next) li.className='now';
-      const h=typeof t.h==='function'?t.h():t.h;
-      li.innerHTML=`<span class="box" aria-hidden="true"></span><span class="tt">${t.t}${done?'<span class="sr" style="position:absolute;left:-9999px">（完成）</span>':''}</span><details ${openHints.has(t.id)?'open':''}><summary>提示</summary><div>${h}</div></details>`;
+      const h=val(t.h);
+      li.innerHTML=`<span class="box" aria-hidden="true"></span><span class="tt">${val(t.t)}${done?'<span class="sr" style="position:absolute;left:-9999px">（完成）</span>':''}</span><details ${openHints.has(t.id)?'open':''}><summary>提示</summary><div>${h}</div></details>`;
       li.querySelector('details').addEventListener('toggle',e=>{ e.target.open?openHints.add(t.id):openHints.delete(t.id); });
       ol.appendChild(li);
     });
     $('#prog').textContent=`${n}/${tasks.length}`;
     $('#meter').style.width=(n/tasks.length*100)+'%';
+  }
+  /* 題目卡：rows 是 [標題, 值或值的陣列]，畫在 #quiz */
+  function renderQuiz(note,rows){
+    const q=$('#quiz'); q.innerHTML='';
+    const h=document.createElement('h2'); h.textContent='題目';
+    const sm=document.createElement('small'); sm.textContent=note; h.appendChild(sm); q.appendChild(h);
+    const dl=document.createElement('dl');
+    rows.forEach(([k,v])=>{
+      const dt=document.createElement('dt'); dt.textContent=k; dl.appendChild(dt);
+      const dd=document.createElement('dd');
+      (Array.isArray(v)?v:[v]).forEach(x=>{ const d=document.createElement('div'); d.textContent=x; dd.appendChild(d); });
+      dl.appendChild(dd);
+    });
+    q.appendChild(dl);
   }
   function setLed(id,s){ $('#'+id).className='led'+(s?' '+s:''); }
   /* show(kind) 決定該類 debug 行是否要印到終端機 */
@@ -397,13 +412,13 @@ function createTerminal(o){
     if(!t){ print(o.doneHint||'全部任務都完成了。','hint'); scrollDown(); return; }
     hs.level=hs.id===t.id?Math.min(3,hs.level+1):1; hs.id=t.id;
     const g=t.g?t.g():{}, lv=hs.level;
-    const L=[`提示 ${lv}/3｜任務 ${lastTasks.indexOf(t)+1}：${plain(t.t)}`];
+    const L=[`提示 ${lv}/3｜任務 ${lastTasks.indexOf(t)+1}：${plain(val(t.t))}`];
     const nav=where(g.where);
     if(lv===1) L.push(g.a||'看右側任務的說明。');
     if(lv>=2&&nav) L.push(nav);
     if(lv===2) L.push(g.b||'');
     if(lv===3){
-      const c=g.c||plain(typeof t.h==='function'?t.h():t.h);
+      const c=g.c||plain(val(t.h));
       L.push(...(Array.isArray(c)?c:[c]));
     }
     L.push(lv<3?'（再按一次提示，看更具體的做法）':'（做完後再按提示，會換下一個任務）');
@@ -413,8 +428,12 @@ function createTerminal(o){
   function focus(opts){ inp.focus(opts); }
 
   return {print,scrollDown,mark,promptStr,withCommon,enterConfig,toPriv,exitMode,logout,enterDP,doSave,save,copyRun,
-    dialPeerNodes,showDP,renderTasks,setLed,renderTrace,clear,focus,hint};
+    dialPeerNodes,showDP,renderTasks,renderQuiz,setLed,renderTrace,clear,focus,hint};
 }
 
-window.CliCore={$,clone,ts,K,NUM,WORD,LINE,isIp,isDial,sortK,patInfo,operational,bestPeer,forward,fwdDesc,createTerminal};
+/* 出題用：rnd(a,b) 是 a 到 b 的整數，pad(n,l) 補零 */
+const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const pad=(n,l)=>String(n).padStart(l,'0');
+
+window.CliCore={$,clone,ts,rnd,pad,K,NUM,WORD,LINE,isIp,isDial,sortK,patInfo,operational,bestPeer,forward,fwdDesc,createTerminal};
 })();
