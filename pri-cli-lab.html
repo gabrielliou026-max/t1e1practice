@@ -241,7 +241,7 @@ input.t{font-family:var(--mono)}
 'use strict';
 const {$,clone,ts,K,NUM,WORD,LINE,isIp,isDial,sortK,forward,fwdDesc}=CliCore;
 
-let DIDS, TARGETS, XRI_IP;   // 題目：五個 DID 與對應內線、XRI-400 位址，rollQuiz() 產生
+let DIDS, TARGETS, NODE, XRI_IP;   // 題目：五個 DID 與對應內線、節點編號與換算出的 XRI-400 位址，rollQuiz() 產生
 const SW=['primary-4ess','primary-5ess','primary-dms100','primary-net5','primary-ni','primary-ntt','primary-qsig'];
 const SWH={'primary-4ess':'Lucent 4ESS switch type for the U.S.','primary-5ess':'Lucent 5ESS switch type for the U.S.','primary-dms100':'Northern Telecom DMS-100 switch type for the U.S.','primary-net5':'NET5 switch type for UK, Europe, Asia and Australia','primary-ni':'National ISDN Switch type for the U.S.','primary-ntt':'NTT switch type for Japan','primary-qsig':'QSIG switch type'};
 
@@ -867,21 +867,21 @@ function refresh(){
 
 /* ---------- side panel ---------- */
 /* 出新題目：DID 是 7 碼（不以 806 開頭，避開既有的 rule 1），內線是 6 碼，各自連號。
-   XRI-400 固定是 10.211.群組.124，只有群組隨機。要在 freshState() 之前呼叫，初始設定的 dial-peer 100 會用到 */
+   XRI-400 由節點編號換算（見 cli-core.js 的 node）。要在 freshState() 之前呼叫，初始設定的 dial-peer 100 會用到 */
 function rollQuiz(){
   const {rnd,pad}=CliCore;
   let pre; do{ pre=rnd(2,8)+pad(rnd(0,999),3); }while(pre.startsWith('806'));
   const d0=rnd(1,95), ext=rnd(4,8)+pad(rnd(0,999),3), e0=rnd(10,90);
   DIDS=[0,1,2,3,4].map(k=>pre+pad(d0+k,3));
   TARGETS=[0,1,2,3,4].map(k=>ext+pad(e0+k,2));
-  XRI_IP=`10.211.${rnd(1,254)}.124`;
+  NODE=CliCore.node.pick(); XRI_IP=CliCore.node.voip(NODE);
 }
 function showQuiz(){
   $('#inDid').innerHTML=DIDS.map((d,i)=>`<option value="${i}">07-${d}</option>`).join('');
   $('#didList').innerHTML=DIDS.map((d,i)=>`<li>07-${d} → 內線 ${TARGETS[i]}</li>`).join('');
   $('#cExt').value=TARGETS.concat('360500').join(', ');
   $('#outExt').value=TARGETS[0];
-  T.renderQuiz('在「電信端」分頁按「重設練習」會換一組',[['DID 轉內線',DIDS.map((d,i)=>`07-${d} → ${TARGETS[i]}`)],['XRI-400',XRI_IP]]);
+  T.renderQuiz('在「電信端」分頁按「重設練習」會換一組',[['節點編號',NODE],['DID 轉內線',DIDS.map((d,i)=>`07-${d} → ${TARGETS[i]}`)]]);
 }
 const renderTrace=(title,r)=>T.renderTrace(title,r,k=>(k==='q'&&S.debug.q931)||(k==='t'&&S.debug.trans));
 $('#btnIn').addEventListener('click',()=>{ const i=+$('#inDid').value; renderTrace(`外線撥 07-${DIDS[i]}`,simIn(i)); });
