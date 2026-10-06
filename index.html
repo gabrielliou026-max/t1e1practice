@@ -14,7 +14,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans TC",s
 main{max-width:720px;margin:0 auto;padding:40px 18px}
 h1{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:1.5rem;margin:0 0 6px}
 p{color:var(--muted);margin:0 0 24px}
-a.card{display:block;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--olive);border-radius:6px;padding:16px 18px;margin-bottom:14px;color:var(--ink);text-decoration:none}
+a.card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px 18px;margin-bottom:14px;color:var(--ink);text-decoration:none}
 a.card:hover,a.card:focus-visible{border-color:var(--olive);outline:none}
 a.card strong{display:block;font-size:1.05rem}
 a.card span{color:var(--muted);font-size:.92rem}
@@ -23,7 +23,7 @@ a.card span{color:var(--muted);font-size:.92rem}
 <body>
 <main>
 <h1>語音介接 CLI 練習器</h1>
-<p>模擬 Cisco IOS 的指令列，支援 Tab 補齊與 ? 說明。告警與 debug 輸出為簡化的練習用模擬。</p>
+<p>Cisco IOS 語音閘道設定練習，支援 Tab 補齊與 ? 說明。</p>
 <a class="card" href="pri-cli-lab.html"><strong>中華電信 E1/T1 PRI 介接</strong><span>LAB-RTR-A：framing、switch-type、DID 號碼轉換、撥出 dial-peer</span></a>
 <a class="card" href="fit50-lab.html?mode=cas"><strong>CN 與 FIT-50 介接（T1 CAS）</strong><span>LAB-RTR-B：ds0-group E&amp;M wink-start、dial-peer、SIGMA trunk 與 Routing Address。可以從出廠預設開始，或從 CCS 拆掉改成 CAS</span></a>
 <a class="card" href="fit50-lab.html?mode=ccs"><strong>CN 與 FIT-50 介接（T1 CCS）</strong><span>LAB-RTR-B：把 CAS 拆掉改成 ISDN PRI，pri-group、D 通道 Serial0/1/0:23、switch-type、compand-type。也可以從出廠預設開始</span></a>

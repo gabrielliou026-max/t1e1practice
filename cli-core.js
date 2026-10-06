@@ -1,5 +1,3 @@
-/* 語音介接 CLI 練習器共用核心：文法樹、Tab / ? 補齊、pipe、歷史指令、dial-peer 比對與側欄元件。
-   各練習器只保留自己的設備狀態、模式指令樹、show 輸出、通話模擬與任務。 */
 (function(){
 'use strict';
 const $=s=>document.querySelector(s);
@@ -119,20 +117,7 @@ function fwdDesc(d){
   return lit?`沒有設定 forward-digits，預設去掉明確比對的前置碼 ${lit}`:'沒有設定 forward-digits';
 }
 
-/* ---------- terminal ----------
-   o.state()        目前的狀態物件 S（重設時會換掉，所以每次都重新取）
-   o.modes          {模式: {roots, prompt}}；exec / priv / config 以外都視為子模式
-   o.refresh()      每次送出指令、按 Ctrl+Z 之後呼叫
-   o.fix(s)         選用，送出前整理輸入
-   o.newDialPeer    選用，新建 dial-peer 的初始內容
-   o.doneHint       選用，任務全部完成後按提示顯示的文字
-
-   任務可以帶 g()，回傳分三層的提示：
-     {where, a, b, c}
-     where  做這一步要在哪裡：{mode, enter, at(ctx)} 是終端機的模式，{tab, name} 是右側分頁
-     a      第 1 層：方向，不講指令
-     b      第 2 層：要用哪個指令
-     c      第 3 層：完整指令（字串或陣列）；省略時用任務的 h */
+/* ---------- terminal ---------- */
 function createTerminal(o){
   const out=$('#out'), inp=$('#cmd'), screen=$('#screen');
   const st=()=>o.state();
@@ -186,7 +171,6 @@ function createTerminal(o){
     }};
   }
 
-  /* dial-peer 子模式裡兩個練習器共用的指令。dp() 回傳目前的 dial-peer。 */
   function dialPeerNodes(dp,destExample){
     const del=k=>(v,x)=>{ delete dp()[k]; mark(); };
     const setv=(k,i,val)=>(v,x)=>{ if(x.neg) delete dp()[k]; else dp()[k]=val!==undefined?val:v[i]; mark(); };
@@ -358,7 +342,6 @@ function createTerminal(o){
     $('#prog').textContent=`${n}/${tasks.length}`;
     $('#meter').style.width=(n/tasks.length*100)+'%';
   }
-  /* 題目卡：rows 是 [標題, 值或值的陣列]，畫在 #quiz */
   function renderQuiz(note,rows){
     const q=$('#quiz'); q.innerHTML='';
     const h=document.createElement('h2'); h.textContent='題目';
@@ -373,7 +356,6 @@ function createTerminal(o){
     q.appendChild(dl);
   }
   function setLed(id,s){ $('#'+id).className='led'+(s?' '+s:''); }
-  /* show(kind) 決定該類 debug 行是否要印到終端機 */
   function renderTrace(title,r,show){
     const t=$('#trace'); t.innerHTML='';
     const p=document.createElement('p'); p.className='tt '+(r.ok?'good':'bad'); p.textContent=`${title}：${r.ok?'成功':'失敗'}`; t.appendChild(p);
@@ -386,7 +368,6 @@ function createTerminal(o){
   /* ---------- hints ---------- */
   const plain=html=>{ const d=document.createElement('div'); d.innerHTML=html; return d.textContent; };
   const MODE_NAME={exec:'使用者模式',priv:'特權模式',config:'全域設定模式'};
-  /* 從目前模式走到 w 指定的模式要打哪些指令 */
   function route(w){
     const S=st(), m=S.mode, sub=isSub(m), steps=[];
     if(w.mode==='exec') return steps;
@@ -431,11 +412,8 @@ function createTerminal(o){
     dialPeerNodes,showDP,renderTasks,renderQuiz,setLed,renderTrace,clear,focus,hint};
 }
 
-/* 出題用：rnd(a,b) 是 a 到 b 的整數，pad(n,l) 補零 */
 const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
 const pad=(n,l)=>String(n).padStart(l,'0');
-/* 節點編號 301–370 換算位址：Loopback0 是三位數拆成三段加 .2（345 → 3.4.5.2），
-   語音伺服器是 10.211.(編號-300).124（345 → 10.211.45.124） */
 const node={
   pick:()=>String(rnd(301,370)),
   loop:n=>String(n).split('').join('.')+'.2',

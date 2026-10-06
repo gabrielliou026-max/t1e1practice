@@ -93,7 +93,7 @@ ol.tasks li.done .box::before{content:"✓";font-size:13px}
 ol.tasks li.done .tt{color:var(--muted)}
 ol.tasks li.now .box{border-color:var(--amber);color:var(--amber);border-width:2px}
 ol.tasks li.now .tt{font-weight:700}
-.quiz{border:1px solid var(--line);border-left:4px solid var(--amber);border-radius:6px;padding:10px 12px;margin-bottom:14px;background:var(--bg)}
+.quiz{border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:14px;background:var(--bg)}
 .quiz:empty{display:none}
 .quiz h2{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 10px;font-size:.95rem;margin:0 0 6px}
 .quiz h2 small{font-weight:400;font-size:.78rem;color:var(--muted)}
@@ -229,7 +229,6 @@ input.t{font-family:var(--mono)}
           <button class="btn" id="btnRandom">隨機出題</button>
           <button class="btn ghost" id="btnReset">重設練習</button>
         </div>
-        <p class="note">這是簡化的模擬：告警、debug 輸出與電信端反應都是為了練習而設計，不代表設備或中華電信的實際行為。</p>
       </div>
     </aside>
   </main>
@@ -241,7 +240,7 @@ input.t{font-family:var(--mono)}
 'use strict';
 const {$,clone,ts,K,NUM,WORD,LINE,isIp,isDial,sortK,forward,fwdDesc}=CliCore;
 
-let DIDS, TARGETS, NODE, XRI_IP;   // 題目：五個 DID 與對應內線、節點編號與換算出的 XRI-400 位址，rollQuiz() 產生
+let DIDS, TARGETS, NODE, XRI_IP;
 const SW=['primary-4ess','primary-5ess','primary-dms100','primary-net5','primary-ni','primary-ntt','primary-qsig'];
 const SWH={'primary-4ess':'Lucent 4ESS switch type for the U.S.','primary-5ess':'Lucent 5ESS switch type for the U.S.','primary-dms100':'Northern Telecom DMS-100 switch type for the U.S.','primary-net5':'NET5 switch type for UK, Europe, Asia and Australia','primary-ni':'National ISDN Switch type for the U.S.','primary-ntt':'NTT switch type for Japan','primary-qsig':'QSIG switch type'};
 
@@ -457,7 +456,7 @@ function setCard(v,x){
   if(S.cfg.cardType===t) return;
   if(S.cfg.cardType) return `% Card type is already ${S.cfg.cardType.toUpperCase()}. Remove it first: no card type ${S.cfg.cardType} 0 1`;
   S.cfg.cardType=t; mark();
-  if(t!==S.hw) return `% The new card type takes effect after the configuration is saved and the router is reloaded.\n（模擬器提示：write memory 之後 reload，controller 才會變成 ${t.toUpperCase()}）`;
+  if(t!==S.hw) return `% The new card type takes effect after the configuration is saved and the router is reloaded.\n（提示：write memory 之後 reload，controller 才會變成 ${t.toUpperCase()}）`;
 }
 function setPri(v,x){
   const t=S.ctx.type, ctl=S.ctx.name, max=t==='e1'?31:24;
@@ -498,7 +497,7 @@ function doReload(){
     Object.keys(S.cfg.voicePorts).forEach(k=>{ if(k.includes(':')) delete S.cfg.voicePorts[k]; });
     S.cfg.dialPeers.forEach(d=>{ if(d.port&&d.port.includes(':')) delete d.port; });
     changed=true;
-    print(`（模擬器）介面卡已變成 ${nhw.toUpperCase()}。原本 ${from.toUpperCase()} 的 controller、Serial、voice-port，以及 dial-peer 裡指向這些埠的 port 設定，因為介面不存在已被移除，要重新設定。`,'dim');
+    print(`（提示）介面卡已變成 ${nhw.toUpperCase()}。原本 ${from.toUpperCase()} 的 controller、Serial、voice-port，以及 dial-peer 裡指向這些埠的 port 設定，因為介面不存在已被移除，要重新設定。`,'dim');
   }
   S.hw=nhw; S.mode='exec'; S.ctx=null; S.debug={q931:false,trans:false}; S.dirty=changed;
   print('\nPress RETURN to get started!\n','dim');
@@ -548,7 +547,7 @@ function isdnState(){
 
 /* ---------- show outputs ---------- */
 function cfgText(cfg,hw,running){
-  const L=['!','! 模擬器只顯示 E1/T1、ISDN 與語音相關設定','!','version 17.12',`hostname ${cfg.hostname}`,'!'];
+  const L=['!','! 只顯示 E1/T1、ISDN 與語音相關設定','!','version 17.12',`hostname ${cfg.hostname}`,'!'];
   if(cfg.cardType) L.push(`card type ${cfg.cardType} 0 1`,'!');
   if(cfg.globalSwitch) L.push(`isdn switch-type ${cfg.globalSwitch}`,'!');
   Object.keys(cfg.rules).sort((a,b)=>a-b).forEach(id=>{
@@ -630,9 +629,9 @@ function showCtl(v){
       `     ${slip} Slip Secs, ${fl} Fr Loss Secs, 0 Line Err Secs, 0 Degraded Mins`,
       `     ${lcv?41:0} Errored Secs, 0 Bursty Err Secs, 0 Severely Err Secs, ${fl} Unavail Secs`);
     if(n==='0/1/0'&&!C.hidden){
-      if(!st.up) L.push(`  （模擬器提示：${st.why}）`);
-      else if(st.warns.includes('linecode')) L.push('  （模擬器提示：linecode 與電信端不一致）');
-      else if(st.warns.includes('clock')) L.push('  （模擬器提示：時脈應該從電信端取，clock source line）');
+      if(!st.up) L.push(`  （提示：${st.why}）`);
+      else if(st.warns.includes('linecode')) L.push('  （提示：linecode 與電信端不一致）');
+      else if(st.warns.includes('clock')) L.push('  （提示：時脈應該從電信端取，clock source line）');
     }
     return L.join('\n');
   }).join('\n\n');
@@ -640,7 +639,7 @@ function showCtl(v){
 function showIsdn(){
   const iz=isdnState();
   let s=`Global ISDN Switchtype = ${S.cfg.globalSwitch||'none'}`;
-  if(!iz.exists) return s+'\n%Q.931 is not configured on any interface（模擬器提示：controller 需要 pri-group 才會產生 D 通道）';
+  if(!iz.exists) return s+'\n%Q.931 is not configured on any interface（提示：controller 需要 pri-group 才會產生 D 通道）';
   s+=`\nISDN Serial${iz.name} interface\n        dsl 0, interface ISDN Switchtype = ${iz.sw||'none'}`;
   s+=`\n    Layer 1 Status:\n        ${iz.L1.up&&!iz.ser.shut?'ACTIVE':'DEACTIVATED'}`;
   s+=`\n    Layer 2 Status:\n        TEI = 0, Ces = 1, SAPI = 0, State = ${iz.l2}`;
@@ -705,7 +704,7 @@ function simIn(i){
   if(!iz.exists) return fail(`沒有 PRI D 通道（Serial${iz.name}），要先在 controller 設定 pri-group`);
   if(!iz.up) return fail('ISDN Layer 2 沒有建立，電信端無法送出 SETUP');
   dbg.push(...q931('RX','SETUP',called,calling));
-  if(!iz.swOk) return fail(`Serial${iz.name} 的 switch-type 是 ${iz.sw||'none'}，與電信端不一致，SETUP 無法正確處理（模擬）`,'0x80E4 - Invalid information element contents');
+  if(!iz.swOk) return fail(`Serial${iz.name} 的 switch-type 是 ${iz.sw||'none'}，與電信端不一致，SETUP 無法正確處理`,'0x80E4 - Invalid information element contents');
   if(!iz.ser.incoming) return fail('Serial 介面沒有 isdn incoming-voice voice，來電被當成數據通話，進不了語音流程','0x80D8 - Incompatible destination');
   let num=called;
   const vp=S.cfg.voicePorts[iz.name], pn=vp&&vp.incoming;
@@ -763,7 +762,7 @@ function simOut(ext,dialed){
   st.push(['v',`符合 dial-peer ${d.tag}（${d.dest}），${fwdDesc(d)}，送出 ${sent||'（空號碼）'}`]);
   const iz=isdnState();
   if(!iz.up) return fail('ISDN Layer 2 沒有建立，無法從 PRI 送出');
-  if(!iz.swOk) return fail(`switch-type ${iz.sw||'none'} 與電信端不一致，電信端不接受 SETUP（模擬）`);
+  if(!iz.swOk) return fail(`switch-type ${iz.sw||'none'} 與電信端不一致，電信端不接受 SETUP`);
   dbg.push(...q931('TX','SETUP',sent,calling),...q931('RX','CALL_PROC'),...q931('RX','ALERTING'));
   st.push(['v',`送出 Q.931 SETUP 給中華電信：被叫 ${sent}，發話 ${calling}`]);
   if(!DIDS.some(x=>calling===x||calling==='07'+x)) st.push(['w',`發話號碼 ${calling} 是內線號碼，不是你的 DID。電信端會改號還是拒接，要實際測試才知道`]);
@@ -787,7 +786,6 @@ const TASKS=[
   {id:'test',t:'用 test voice translation-rule 驗證號碼',h:()=>'特權模式 <code>test voice translation-rule 50 '+DIDS[0]+'</code>，在設定模式要在前面加 <code>do</code>。'},
   {id:'save',t:'存檔',h:()=>'<code>write memory</code> 或 <code>copy running-config startup-config</code>。'}
 ];
-/* 分三層的提示：a 方向、b 用哪個指令、c 完整指令。見 cli-core.js 的 createTerminal 說明 */
 const failOf=r=>(r.st.filter(([k])=>k==='x').pop()||['',''])[1];
 const atCtl=()=>({mode:'ctl',enter:'controller '+S.hw.toUpperCase()+' 0/1/0',at:c=>c&&c.name==='0/1/0'});
 const atSer=()=>({mode:'if',enter:'interface Serial'+dchan(),at:c=>c&&c.name===dchan()});
@@ -866,8 +864,6 @@ function refresh(){
 }
 
 /* ---------- side panel ---------- */
-/* 出新題目：DID 是 7 碼（不以 806 開頭，避開既有的 rule 1），內線是 6 碼，各自連號。
-   XRI-400 由節點編號換算（見 cli-core.js 的 node）。要在 freshState() 之前呼叫，初始設定的 dial-peer 100 會用到 */
 function rollQuiz(){
   const {rnd,pad}=CliCore;
   let pre; do{ pre=rnd(2,8)+pad(rnd(0,999),3); }while(pre.startsWith('806'));
@@ -906,10 +902,10 @@ $('#btnReveal').addEventListener('click',()=>{ C.hidden=false; syncCarrierUI(); 
 $('#btnReset').addEventListener('click',()=>{ rollQuiz(); freshState(); freshCarrier(); showQuiz(); syncCarrierUI(); T.clear(); welcome(); refresh(); T.focus(); });
 
 function welcome(){
-  print('LAB-RTR-A 模擬器：中華電信 PRI 介接練習','dim');
+  print('LAB-RTR-A：中華電信 PRI 介接練習','dim');
   print('Tab 補齊指令或列出選項，? 查看可用參數，↑↓ 叫出歷史指令，Ctrl+Z 回到特權模式。','dim');
   print('卡住時按下方的「提示」或輸入 hint，每多按一次會說得更具體。','hint');
-  print('先輸入 enable 開始。這是簡化的模擬，告警與 debug 輸出僅供練習參考。\n','dim');
+  print('先輸入 enable 開始。\n','dim');
 }
 showQuiz(); welcome(); syncCarrierUI(); refresh();
 T.focus({preventScroll:true});

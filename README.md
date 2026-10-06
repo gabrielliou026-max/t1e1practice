@@ -6,7 +6,7 @@
 |---|---|
 | `index.html` | 首頁，連到兩個練習器 |
 | `pri-cli-lab.html` | 中華電信 E1/T1 PRI 介接（LAB-RTR-A） |
-| `fit50-lab.html` | CN 與 FIT-50 介接（LAB-RTR-B）：T1 CAS（文件 01）與 T1 CCS／ISDN PRI（文件 02）。可以從出廠預設開始，或從另一種介接方式拆掉改過來（CAS → CCS、CCS → CAS） |
+| `fit50-lab.html` | CN 與 FIT-50 介接（LAB-RTR-B）：T1 CAS 與 T1 CCS（ISDN PRI）。可以從出廠預設開始，或從另一種介接方式拆掉改過來（CAS → CCS、CCS → CAS） |
 | `fit50-cas-lab.html` | 舊網址，自動轉到 `fit50-lab.html?mode=cas` |
 | `cli-core.js` | 兩個練習器共用的 CLI 引擎：指令解析、Tab / ? 補齊、pipe、歷史指令、dial-peer 比對、任務清單 |
 

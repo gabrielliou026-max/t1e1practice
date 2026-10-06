@@ -93,7 +93,7 @@ ol.tasks li.done .box::before{content:"✓";font-size:13px}
 ol.tasks li.done .tt{color:var(--muted)}
 ol.tasks li.now .box{border-color:var(--amber);color:var(--amber);border-width:2px}
 ol.tasks li.now .tt{font-weight:700}
-.quiz{border:1px solid var(--line);border-left:4px solid var(--amber);border-radius:6px;padding:10px 12px;margin-bottom:14px;background:var(--bg)}
+.quiz{border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:14px;background:var(--bg)}
 .quiz:empty{display:none}
 .quiz h2{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 10px;font-size:.95rem;margin:0 0 6px}
 .quiz h2 small{font-weight:400;font-size:.78rem;color:var(--muted)}
@@ -221,7 +221,7 @@ button.del{font:inherit;font-size:.8rem;padding:2px 8px;border:1px solid var(--l
             <p class="note" id="raMsg"></p>
           </div>
         </div>
-        <p class="note">SIGMA 上的內線：<span id="sigExts"></span>。這裡只模擬文件用到的兩個畫面，Route Pattern 只做完全相符比對。</p>
+        <p class="note">SIGMA 上的內線：<span id="sigExts"></span>。這裡只有 Trunk 和 Routing Address 兩個畫面，Route Pattern 只做完全相符比對。</p>
       </div>
 
       <div class="pane" id="tab-call" hidden>
@@ -241,7 +241,6 @@ button.del{font:inherit;font-size:.8rem;padding:2px 8px;border:1px solid var(--l
 
         <div class="trace" id="trace" aria-live="polite"></div>
         <p class="note"><span id="fitSide"></span>用戶號碼 <span id="fitUserNote"></span>。開啟 <span id="dbgNote"></span> 或 <code>debug voice dialpeer</code> 後，模擬通話時終端機也會印出 debug。</p>
-        <p class="note">這是簡化的模擬：告警、信令與 debug 輸出都是為了練習而設計，不代表設備的實際行為。</p>
       </div>
     </aside>
   </main>
@@ -257,23 +256,18 @@ const SW=['primary-4ess','primary-5ess','primary-dms100','primary-net5','primary
 const SWH={'primary-4ess':'Lucent 4ESS switch type for the U.S.','primary-5ess':'Lucent 5ESS switch type for the U.S.','primary-dms100':'Northern Telecom DMS-100 switch type for the U.S.','primary-net5':'NET5 switch type for UK, Europe, Asia and Australia','primary-ni':'National ISDN Switch type for the U.S.','primary-ntt':'NTT switch type for Japan','primary-qsig':'QSIG switch type'};
 const FIT_SW='primary-net5', PRI_PORT='0/1/0:23', DCH='0/1/0:23';
 
-/* ---------- 練習目標與起始狀態 ----------
-   MODE 是 FIT-50 那一端的介接方式（cas / ccs），路由器要設定成一樣。
-   START 是 factory（出廠預設）或 swap（另一種介接方式已經設定好，要拆掉改過來）。 */
+/* ---------- 練習目標與起始狀態 ---------- */
 const qs=new URLSearchParams(location.search);
 let MODE=qs.get('mode')==='ccs'?'ccs':'cas';
 let START=qs.get('start')==='factory'||qs.get('start')==='swap'?qs.get('start'):(MODE==='ccs'?'swap':'factory');
 const other=m=>m==='cas'?'ccs':'cas';
 const NAME={cas:'T1 CAS',ccs:'T1 CCS'};
 
-let Q;   // 題目：節點編號（換算出 Loopback0 與 SIGMA 位址）、FIT-50 用戶號碼、SIGMA 內線，rollQuiz() 產生
-/* 出新題目：Loopback0 與 SIGMA 位址都由節點編號換算（見 cli-core.js 的 node），題目卡只給編號。
-   FIT-50 用戶是隨機 6 碼（不以 0、3 開頭，避開 SIGMA 的 3602 內線），SIGMA 內線是 3602 開頭的連號 */
+let Q;
 function rollQuiz(){
   const {rnd,pad,node}=CliCore, e=rnd(1,98), code=node.pick();
   Q={code,loop:node.loop(code),sigma:node.voip(code),fitUser:'12456789'[rnd(0,7)]+pad(rnd(0,99999),5),exts:['3602'+pad(e,2),'3602'+pad(e+1,2)]};
 }
-/* dial-peer 900 的 destination-pattern：要比對得到 FIT-50 用戶，又不能把 SIGMA 內線也吃進來（否則 FIT-50 打 VoIP 會被繞回 T1） */
 function fitPatOk(p){ const pi=p&&CliCore.patInfo(p); return !!pi&&pi.re.test(Q.fitUser)&&!Q.exts.some(x=>pi.re.test(x)); }
 function fitPat(){ return Q.fitUser.slice(0,3)+'...'; }
 
@@ -285,7 +279,6 @@ function factoryConfig(){
   const vp={}; for(let i=0;i<6;i++) vp['1/0/'+i]=newVP();
   return {hostname:'LAB-RTR-B',globalSwitch:null,controllers:c,serials:{},loopbacks:{},voicePorts:vp,dialPeers:[]};
 }
-/* 照文件設定完成的路由器：kind 是 cas（文件 01）或 ccs（文件 02） */
 function doneConfig(kind){
   const cfg=factoryConfig(), c=cfg.controllers['0/1/0'];
   Object.assign(c,{framing:'esf',linecode:'b8zs',clock:'line primary',cable:'short 110'});
@@ -441,14 +434,12 @@ function ctlRoots(){
     K('pri-group','Configure the specified timeslots for PRI',[K('timeslots','List of timeslots in the pri-group',[WORD('<1-24>','List of timeslots, e.g. 1-24',null,setPri,tsOk,{sug:()=>['1-24']})],(v,x)=>removePri(),{nOnly:true})],(v,x)=>removePri(),{nOnly:true})
   ]);
 }
-/* 語音埠拆掉時，指向它的 dial-peer port 一併清掉 */
 function dropPort(port){
   delete S.cfg.voicePorts[port];
   const hit=S.cfg.dialPeers.filter(d=>d.port===port); hit.forEach(d=>delete d.port);
-  return hit.length?`（模擬器提示：voice-port ${port} 已移除，dial-peer ${hit.map(d=>d.tag).join('、')} 原本的 port ${port} 也一併清掉了）`:'';
+  return hit.length?`（提示：voice-port ${port} 已移除，dial-peer ${hit.map(d=>d.tag).join('、')} 原本的 port ${port} 也一併清掉了）`:'';
 }
-/* 拆 ds0-group / pri-group 前要先 shutdown 對應的 voice-port（照文件 02 步驟 2 的順序，模擬器以此為規則） */
-const notShut=port=>`% Voice-port ${port} is in service. Shut down the voice-port before removing it（模擬器提示：先到 voice-port ${port} 下 shutdown）`;
+const notShut=port=>`% Voice-port ${port} is in service. Shut down the voice-port before removing it（提示：先到 voice-port ${port} 下 shutdown）`;
 function setDs0(v,x){
   const c=S.cfg.controllers[S.ctx.name], num=v[1];
   if(x.neg) return removeDs0(num,x);
@@ -510,10 +501,8 @@ function ds0(){
   const g=ctl0().ds0; if(!g) return null;
   return Object.assign({},g,{port:'0/1/0:'+g.num,ok:g.type==='e&m-wink-start'});
 }
-/* 路由器目前的信令：pri-group 是 ccs，ds0-group 是 cas */
 const sigOf=()=>ctl0().pri?'ccs':ctl0().ds0?'cas':null;
 const actPort=()=>ctl0().pri?PRI_PORT:(ds0()||{}).port||null;
-/* ISDN Layer 2 只有在 FIT-50 那端也是 CCS 時才會建立 */
 function isdnState(){
   const ser=S.cfg.serials[DCH];
   if(!ser) return {exists:false};
@@ -528,7 +517,7 @@ function trunkDest(){
 
 /* ---------- show ---------- */
 function cfgText(cfg,running){
-  const L=['!','! 模擬器只顯示與 FIT-50 介接相關的設定','!','version 17.12',`hostname ${cfg.hostname}`,'!','card type t1 0 1','!'];
+  const L=['!','! 只顯示與 FIT-50 介接相關的設定','!','version 17.12',`hostname ${cfg.hostname}`,'!','card type t1 0 1','!'];
   if(cfg.globalSwitch) L.push(`isdn switch-type ${cfg.globalSwitch}`,'!');
   UNITS.forEach(u=>{
     const c=cfg.controllers[u]; L.push(`controller T1 ${u}`);
@@ -599,9 +588,9 @@ function showCtl(v){
       `     ${slip} Slip Secs, ${fl} Fr Loss Secs, 0 Line Err Secs, 0 Degraded Mins`,
       `     ${lcv?41:0} Errored Secs, 0 Bursty Err Secs, 0 Severely Err Secs, ${fl} Unavail Secs`);
     if(n==='0/1/0'){
-      if(!st.up) L.push(`  （模擬器提示：${st.why}）`);
-      else if(st.warns.includes('linecode')) L.push('  （模擬器提示：linecode 與 FIT-50 不一致）');
-      else if(st.warns.includes('clock')) L.push('  （模擬器提示：時脈應該從線路取，clock source line）');
+      if(!st.up) L.push(`  （提示：${st.why}）`);
+      else if(st.warns.includes('linecode')) L.push('  （提示：linecode 與 FIT-50 不一致）');
+      else if(st.warns.includes('clock')) L.push('  （提示：時脈應該從線路取，clock source line）');
     }
     return L.join('\n');
   }).join('\n\n');
@@ -609,20 +598,20 @@ function showCtl(v){
 function showIsdn(){
   const iz=isdnState();
   let s=`Global ISDN Switchtype = ${S.cfg.globalSwitch||'none'}`;
-  if(!iz.exists) return s+'\n%Q.931 is not configured on any interface（模擬器提示：controller 需要 pri-group 才會產生 D 通道）';
+  if(!iz.exists) return s+'\n%Q.931 is not configured on any interface（提示：controller 需要 pri-group 才會產生 D 通道）';
   s+=`\nISDN Serial${DCH} interface\n        dsl 0, interface ISDN Switchtype = ${iz.sw||'none'}`;
   s+=`\n    Layer 1 Status:\n        ${iz.L1.up&&!iz.ser.shut?'ACTIVE':'DEACTIVATED'}`;
   s+=`\n    Layer 2 Status:\n        TEI = 0, Ces = 1, SAPI = 0, State = ${iz.l2}`;
   s+='\n    Layer 3 Status:\n        0 Active Layer 3 Call(s)\n    Active dsl 0 CCBs = 0\n    The Free Channel Mask:  0x807FFFFF';
   s+='\n    Number of L2 Discards = 0, L2 Session ID = 0\n    Total Allocated ISDN CCBs = 0';
-  if(!iz.up&&iz.L1.up&&!iz.ser.shut) s+=MODE!=='ccs'?'\n（模擬器提示：FIT-50 這條 T1 是 CAS，沒有 ISDN，Layer 2 不會建立）':'\n（模擬器提示：switch-type 與 FIT-50 不一致，Layer 2 建立不起來）';
+  if(!iz.up&&iz.L1.up&&!iz.ser.shut) s+=MODE!=='ccs'?'\n（提示：FIT-50 這條 T1 是 CAS，沒有 ISDN，Layer 2 不會建立）':'\n（提示：switch-type 與 FIT-50 不一致，Layer 2 建立不起來）';
   return s;
 }
 function showDP(){ return T.showDP(18,'（目前沒有任何 dial-peer）'); }
 function showIpBrief(){
   const L=['Interface              IP-Address      OK? Method Status                Protocol'], ns=Object.keys(S.cfg.loopbacks).sort((a,b)=>a-b);
   ns.forEach(n=>{ const l=S.cfg.loopbacks[n]; L.push(('Loopback'+n).padEnd(23)+(l.ip?l.ip.addr:'unassigned').padEnd(16)+'YES '+(l.ip?'manual':'unset').padEnd(7)+'up                    up'); });
-  L.push(ns.length?'（模擬器只列出 Loopback 介面）':'（模擬器只列出 Loopback 介面，目前還沒有建立任何 Loopback）');
+  L.push(ns.length?'（只列出 Loopback 介面）':'（只列出 Loopback 介面，目前還沒有建立任何 Loopback）');
   return L.join('\n');
 }
 function showVPS(){
@@ -652,12 +641,11 @@ function q931(dir,msg,called,calling){
   if(msg==='SETUP') L.push('        Bearer Capability i = 0x8090A2','                Standard = CCITT','                Transfer Capability = Speech',`        Calling Party Number i = 0x2183, '${calling}'`,`        Called Party Number i = 0x81, '${called}'`,'                Plan:ISDN, Type:Unknown');
   return L.map(l=>['q',l]);
 }
-/* 線路與信令檢查：通過時回傳語音埠，失敗時在 st 寫下原因並回傳 null */
 function lineChecks(st,dir){
   const L=l1(), sig=sigOf(), fail=m=>{ st.push(['x',m]); return null; };
   if(!L.up) return fail(`controller T1 0/1/0 沒有起來（${L.why}）`);
-  if(L.warns.includes('linecode')) st.push(['w','linecode 與 FIT-50 不一致，線路有錯誤碼，通話品質可能受影響（模擬）']);
-  if(L.warns.includes('clock')) st.push(['w','時脈設成 internal，與 FIT-50 不同步，會有 slip（模擬）']);
+  if(L.warns.includes('linecode')) st.push(['w','linecode 與 FIT-50 不一致，線路有錯誤碼，通話品質可能受影響']);
+  if(L.warns.includes('clock')) st.push(['w','時脈設成 internal，與 FIT-50 不同步，會有 slip']);
   if(!sig) return fail('controller 沒有 ds0-group 也沒有 pri-group，沒有可用的語音埠');
   if(sig!==MODE) return fail(MODE==='cas'
     ?'FIT-50 這條 T1 是 CAS（E&M wink-start），路由器卻設成 PRI（pri-group），兩邊信令不同，通話建立不起來'
@@ -667,8 +655,8 @@ function lineChecks(st,dir){
     if(g.ts!=='1-24') st.push(['w',`ds0-group 只開了 timeslots ${g.ts}，題目是 1-24`]);
     if(!g.ok){
       if(g.type==='e&m-immediate-start') return fail(dir==='out'
-        ?'信令是 immediate-start：路由器佔線後立刻送號，沒等 FIT-50 回 wink，FIT-50 還沒準備好收號，號碼遺失（模擬）'
-        :'信令是 immediate-start：FIT-50 佔線後在等 wink，路由器不會回 wink，FIT-50 逾時掛斷（模擬）');
+        ?'信令是 immediate-start：路由器佔線後立刻送號，沒等 FIT-50 回 wink，FIT-50 還沒準備好收號，號碼遺失'
+        :'信令是 immediate-start：FIT-50 佔線後在等 wink，路由器不會回 wink，FIT-50 逾時掛斷');
       return fail(`信令是 ${g.type}，與 FIT-50 的 E&M wink-start 不相容`);
     }
     if(S.cfg.voicePorts[g.port].shut) return fail(`voice-port ${g.port} 是 shutdown，語音埠沒有啟用`);
@@ -677,10 +665,10 @@ function lineChecks(st,dir){
   const iz=isdnState(), vp=S.cfg.voicePorts[PRI_PORT];
   if(ctl0().pri!=='1-24') st.push(['w',`pri-group 只開了 timeslots ${ctl0().pri}，題目是 1-24`]);
   if(iz.ser.shut) return fail(`interface Serial${DCH} 是 shutdown，D 通道沒有起來`);
-  if(!iz.swOk) return fail(`D 通道的 switch-type 是 ${iz.sw||'none'}，FIT-50 用 ${FIT_SW}，ISDN Layer 2 建立不起來（模擬）`);
+  if(!iz.swOk) return fail(`D 通道的 switch-type 是 ${iz.sw||'none'}，FIT-50 用 ${FIT_SW}，ISDN Layer 2 建立不起來`);
   if(vp.shut) return fail(`voice-port ${PRI_PORT} 是 shutdown，B 通道沒有啟用`);
   if(dir==='in'&&!iz.ser.incoming) return fail(`interface Serial${DCH} 沒有 isdn incoming-voice voice，FIT-50 打進來的電話被當成數據通話，進不了語音流程`);
-  if(vp.compand==='a-law') return fail(`voice-port ${PRI_PORT} 的 compand-type 是 a-law，FIT-50 用 u-law，通話接通後聲音嚴重失真（模擬）`);
+  if(vp.compand==='a-law') return fail(`voice-port ${PRI_PORT} 的 compand-type 是 a-law，FIT-50 用 u-law，通話接通後聲音嚴重失真`);
   return PRI_PORT;
 }
 function simA(ext,dialed){
@@ -730,35 +718,34 @@ function simB(user,dialed){
   if(d.type==='pots') return fail(`符合 dial-peer ${d.tag}（${d.dest}），通話被送回 ${d.port}，沒有送到 SIGMA`);
   if(/T/i.test(d.dest)) st.push(['i',`dial-peer ${d.tag} 的 ${d.dest} 含 T，路由器會等數字間隔逾時才送出，接通前會有幾秒延遲`]);
   if(d.target!=='ipv4:'+Q.sigma) return fail(`session target 是 ${d.target.replace('ipv4:','')}，不是節點 ${Q.code} 的 SIGMA 位址`);
-  if(d.proto!=='sipv2') st.push(['w','沒有設定 session protocol sipv2，預設會用 H.323，SIGMA 這條 trunk 是 SIP（模擬）']);
+  if(d.proto!=='sipv2') st.push(['w','沒有設定 session protocol sipv2，預設會用 H.323，SIGMA 這條 trunk 是 SIP']);
   if(d.dtmf!=='rtp-nte') st.push(['w','沒有 dtmf-relay rtp-nte，通話中按鍵（DTMF）可能傳不過去']);
   st.push(['v',`符合 dial-peer ${d.tag}（${d.dest}），送 SIP INVITE 到 ${Q.sigma}`]);
-  if(d.proto!=='sipv2') return fail('SIGMA 不接受 H.323 呼叫，通話失敗（模擬）');
+  if(d.proto!=='sipv2') return fail('SIGMA 不接受 H.323 呼叫，通話失敗');
   if(!Q.exts.includes(dialed)) return fail(`SIGMA 沒有內線 ${dialed}，回覆 404 Not Found`);
   if(MODE==='ccs') dbg.push(...q931('TX','CALL_PROC'),...q931('TX','ALERTING'));
   st.push(['v',`SIGMA 內線 ${dialed} 響鈴`]);
   return {ok:true,st,dbg};
 }
 
-/* ---------- tasks ----------
-   CAS 照文件 01、CCS 照文件 02 的步驟。拆除任務只出現在「從另一種介接方式改過來」的起始狀態。 */
+/* ---------- tasks ---------- */
 const TK={
   conf:{t:'進入特權模式和全域設定模式',h:'<code>enable</code>，再 <code>configure terminal</code>（可縮寫 <code>conf t</code>）。'},
-  gsw:{t:'步驟 1：全域設定 ISDN switch-type',h:'設定模式下 <code>isdn switch-type primary-net5</code>。文件寫成 <code>primary-net</code>，IOS 的指令可以縮寫，會被當成 primary-net5。'},
-  tearCas:{t:'步驟 2：拆掉 CAS（先 shutdown voice-port 0/1/0:1，再移除 ds0-group）',h:'<code>voice-port 0/1/0:1</code> 底下 <code>shutdown</code>，再到 <code>controller T1 0/1/0</code> 下 <code>no ds0-group 1 timeslots 1-24 type e&amp;m-wink-start</code>（或簡寫 <code>no ds0-group 1</code>）。'},
+  gsw:{t:'全域設定 ISDN switch-type',h:'設定模式下 <code>isdn switch-type primary-net5</code>。'},
+  tearCas:{t:'拆掉 CAS（先 shutdown voice-port 0/1/0:1，再移除 ds0-group）',h:'<code>voice-port 0/1/0:1</code> 底下 <code>shutdown</code>，再到 <code>controller T1 0/1/0</code> 下 <code>no ds0-group 1 timeslots 1-24 type e&amp;m-wink-start</code>（或簡寫 <code>no ds0-group 1</code>）。'},
   tearPri:{t:'先拆掉 PRI（先 shutdown voice-port 0/1/0:23，再移除 pri-group）',h:'<code>voice-port 0/1/0:23</code> 底下 <code>shutdown</code>，再到 <code>controller T1 0/1/0</code> 下 <code>no pri-group timeslots 1-24</code>。D 通道 Serial0/1/0:23 會跟著消失。'},
-  ctl:{t:()=>MODE==='cas'?'步驟 1：設定 controller T1 0/1/0 的實體層':'步驟 3：設定 controller T1 0/1/0 的實體層',h:'<code>controller t1 0/1/0</code>，設定 framing、clock source、linecode、cablelength，參數照上方題目卡。用 <code>show controllers t1 0/1/0</code> 確認沒有告警。'},
-  ds0:{t:'步驟 1：設定 ds0-group，信令用 E&amp;M wink-start',h:'<code>ds0-group 1 timeslots 1-24 type e&amp;m-wink-start</code>。文件寫成 e&amp;m-winkstart，模擬器以另一站實際組態的 e&amp;m-wink-start 為準，實機請用 ? 確認。設好後 <code>show voice port summary</code> 會出現 0/1/0:1。'},
-  pri:{t:'步驟 3：設定 pri-group，改成 PRI 模式',h:'<code>controller T1 0/1/0</code> 底下 <code>pri-group timeslots 1-24</code>。文件寫成 timelots，正確是 timeslots。設好後會產生 D 通道 Serial0/1/0:23 和 voice-port 0/1/0:23。'},
-  compand:{t:'步驟 4：voice-port 0/1/0:23 的 compand-type 設為 u-law',h:'<code>voice-port 0/1/0:23</code> 底下 <code>compand-type u-law</code>。'},
-  dch:{t:'步驟 5：設定 D 通道 interface Serial0/1/0:23',h:'<code>interface Serial0/1/0:23</code> 底下 <code>no ip address</code>、<code>encapsulation ppp</code>、<code>isdn switch-type primary-net5</code>、<code>isdn incoming-voice voice</code>。'},
+  ctl:{t:'設定 controller T1 0/1/0 的實體層',h:'<code>controller t1 0/1/0</code>，設定 framing、clock source、linecode、cablelength，參數照上方題目卡。用 <code>show controllers t1 0/1/0</code> 確認沒有告警。'},
+  ds0:{t:'設定 ds0-group，信令用 E&amp;M wink-start',h:'<code>ds0-group 1 timeslots 1-24 type e&amp;m-wink-start</code>。設好後 <code>show voice port summary</code> 會出現 0/1/0:1。'},
+  pri:{t:'設定 pri-group，改成 PRI 模式',h:'<code>controller T1 0/1/0</code> 底下 <code>pri-group timeslots 1-24</code>。設好後會產生 D 通道 Serial0/1/0:23 和 voice-port 0/1/0:23。'},
+  compand:{t:'voice-port 0/1/0:23 的 compand-type 設為 u-law',h:'<code>voice-port 0/1/0:23</code> 底下 <code>compand-type u-law</code>。'},
+  dch:{t:'設定 D 通道 interface Serial0/1/0:23',h:'<code>interface Serial0/1/0:23</code> 底下 <code>no ip address</code>、<code>encapsulation ppp</code>、<code>isdn switch-type primary-net5</code>、<code>isdn incoming-voice voice</code>。'},
   lo:{t:'設定 Loopback0 的 IP 位址',h:'<code>interface Loopback0</code>，再用 <code>ip address</code> 設定位址，遮罩 <code>255.255.255.255</code>。位址由題目卡的節點編號換算，例如 345 → 3.4.5.2。設好用 <code>show ip interface brief</code> 確認。'},
-  dp100:{t:()=>MODE==='cas'?'步驟 2.1：FIT-50 打 VoIP 的 dial-peer 100':'步驟 6.1：FIT-50 打 VoIP 的 dial-peer 100',h:'<code>dial-peer voice 100 voip</code>，設定 destination-pattern、session protocol、session target、session transport、dtmf-relay、codec，最後 <code>no vad</code>。'},
-  dp900:{t:()=>MODE==='cas'?'步驟 2.2：VoIP 打 FIT-50 的 dial-peer 900':'步驟 6.2：VoIP 打 FIT-50 的 dial-peer 900（port 改成 0/1/0:23）',h:()=>`<code>dial-peer voice 900 pots</code>，<code>destination-pattern</code> 要涵蓋題目卡的 FIT-50 用戶號碼（例如前三碼加 <code>...</code>）、<code>port ${MODE==='cas'?'0/1/0:1':PRI_PORT}</code>，記得 <code>forward-digits all</code>，否則預設會把 pattern 開頭的數字去掉。`},
-  trunk:{t:()=>MODE==='cas'?'步驟 3.1：SIGMA 的 FIT-50 trunk 指向 Loopback0':'步驟 7.1：SIGMA 的 FIT-50 trunk 指向 Loopback0',h:'到 SIGMA 分頁，Destination URI Address 填 <code>sip:Loopback0位址:5060</code>。Loopback0 位址可以用 <code>show ip interface brief</code> 查。'},
-  route:{t:()=>MODE==='cas'?'步驟 3.2：SIGMA 新增 Routing Address':'步驟 7.2：SIGMA 新增 Routing Address',h:()=>'到 SIGMA 分頁新增 Address <code>'+Q.fitUser+'</code>，Name 填 FIT-50。'},
-  callA:{t:()=>`步驟 ${MODE==='cas'?'4.1':'8.1'}：VoIP 撥 ${Q.fitUser} 打通 FIT-50`,h:()=>'到模擬通話分頁按「VoIP 打 FIT-50」的撥出。失敗時看每一步的原因，或開 <code>debug voice dialpeer</code>'+(MODE==='ccs'?'、<code>debug isdn q931</code>':'')+'。'},
-  callB:{t:()=>`步驟 ${MODE==='cas'?'4.2':'8.2'}：FIT-50 撥 ${Q.exts[0]} 打通 VoIP`,h:()=>'到模擬通話分頁按「FIT-50 打 VoIP」的撥出。'+(MODE==='cas'?'可以開 <code>debug vpm signal</code> 看 seize 和 wink。':'可以開 <code>debug isdn q931</code> 看 SETUP。')},
+  dp100:{t:'FIT-50 打 VoIP 的 dial-peer 100',h:'<code>dial-peer voice 100 voip</code>，設定 destination-pattern、session protocol、session target、session transport、dtmf-relay、codec，最後 <code>no vad</code>。'},
+  dp900:{t:()=>MODE==='cas'?'VoIP 打 FIT-50 的 dial-peer 900':'VoIP 打 FIT-50 的 dial-peer 900（port 改成 0/1/0:23）',h:()=>`<code>dial-peer voice 900 pots</code>，<code>destination-pattern</code> 要涵蓋題目卡的 FIT-50 用戶號碼（例如前三碼加 <code>...</code>）、<code>port ${MODE==='cas'?'0/1/0:1':PRI_PORT}</code>，記得 <code>forward-digits all</code>，否則預設會把 pattern 開頭的數字去掉。`},
+  trunk:{t:'SIGMA 的 FIT-50 trunk 指向 Loopback0',h:'到 SIGMA 分頁，Destination URI Address 填 <code>sip:Loopback0位址:5060</code>。Loopback0 位址可以用 <code>show ip interface brief</code> 查。'},
+  route:{t:'SIGMA 新增 Routing Address',h:()=>'到 SIGMA 分頁新增 Address <code>'+Q.fitUser+'</code>，Name 填 FIT-50。'},
+  callA:{t:()=>`VoIP 撥 ${Q.fitUser} 打通 FIT-50`,h:()=>'到模擬通話分頁按「VoIP 打 FIT-50」的撥出。失敗時看每一步的原因，或開 <code>debug voice dialpeer</code>'+(MODE==='ccs'?'、<code>debug isdn q931</code>':'')+'。'},
+  callB:{t:()=>`FIT-50 撥 ${Q.exts[0]} 打通 VoIP`,h:()=>'到模擬通話分頁按「FIT-50 打 VoIP」的撥出。'+(MODE==='cas'?'可以開 <code>debug vpm signal</code> 看 seize 和 wink。':'可以開 <code>debug isdn q931</code> 看 SETUP。')},
   save:{t:'存檔',h:'<code>write memory</code> 或 <code>copy running-config startup-config</code>。'}
 };
 function taskIds(){
@@ -768,20 +755,17 @@ function taskIds(){
     :['conf','gsw',...(swap?['tearCas']:[]),'ctl','pri','compand','dch','lo','dp100','dp900','trunk','route','callA','callB','save'];
 }
 
-/* 分三層的提示：a 方向、b 用哪個指令、c 完整指令。見 cli-core.js 的 createTerminal 說明 */
 const failOf=r=>(r.st.filter(([k])=>k==='x').pop()||['',''])[1];
 const atCtl={mode:'ctl',enter:'controller t1 0/1/0',at:c=>c&&c.name==='0/1/0'};
 const atDp=(tag,type)=>({mode:'dp',enter:`dial-peer voice ${tag} ${type}`,at:c=>c&&c.tag===tag});
 const atVp=p=>({mode:'vp',enter:'voice-port '+p,at:c=>c&&c.name===p});
 const atSer={mode:'if',enter:'interface Serial'+DCH,at:c=>c&&c.name===DCH};
-/* 列出 dial-peer 還沒設好的項目：want 是 [欄位, 正確值或判斷函式, 指令] */
 function missing(d,type,want){
   const c=[];
   if(d&&d.type!==type) c.push(`（dial-peer ${d.tag} 已經是 ${d.type}，先在設定模式用 no dial-peer voice ${d.tag} 刪掉）`);
   want.forEach(([k,v,cmd])=>{ if(!d||d.type!==type||!(typeof v==='function'?v(d[k]):d[k]===v)) c.push(cmd); });
   return c;
 }
-/* 拆除的提示：先 shutdown 語音埠，再到 controller 移除 */
 function tearHint(port,removeCmd,what,why){
   const vp=S.cfg.voicePorts[port];
   if(vp&&!vp.shut) return {where:atVp(port),a:why,b:`拆掉${what}之前，要先讓語音埠停用：到 voice-port ${port} 下 shutdown，再到 controller 移除${what}。`,c:['shutdown']};
@@ -790,7 +774,7 @@ function tearHint(port,removeCmd,what,why){
 const needPri={where:atCtl,a:'要先在 controller 設定 pri-group，才會有 D 通道和 voice-port 0/1/0:23。',b:'在 controller T1 0/1/0 底下設定 pri-group timeslots。',c:['pri-group timeslots 1-24']};
 const HINTS={
   conf:()=>({where:{mode:'config'},a:'要先進入設定模式，才能修改路由器的設定。',b:'enable 進入特權模式（提示字元變成 #），再用 configure terminal 進入設定模式。',c:['照上面的順序輸入。configure terminal 可以縮寫成 conf t，提示字元變成 (config)# 就完成了。']}),
-  gsw:()=>({where:{mode:'config'},a:'CCS 走的是 ISDN PRI，路由器要知道對端用哪一種 ISDN 交換標準。文件步驟 1 先在全域設定。',b:'在設定模式用 isdn switch-type，FIT-50 用的是 NET5，打 isdn switch-type ? 看選項。',c:['isdn switch-type primary-net5']}),
+  gsw:()=>({where:{mode:'config'},a:'CCS 走的是 ISDN PRI，路由器要知道對端用哪一種 ISDN 交換標準。先在全域設定。',b:'在設定模式用 isdn switch-type，FIT-50 用的是 NET5，打 isdn switch-type ? 看選項。',c:['isdn switch-type primary-net5']}),
   tearCas:()=>tearHint('0/1/0:1','no ds0-group 1 timeslots 1-24 type e&m-wink-start',' ds0-group','FIT-50 已經改成 ISDN PRI，路由器原本 CAS 的 ds0-group 要先拆掉，時槽才能給 pri-group 用。'),
   tearPri:()=>tearHint(PRI_PORT,'no pri-group timeslots 1-24',' pri-group','FIT-50 已經改成 CAS，路由器原本的 pri-group 要先拆掉，時槽才能給 ds0-group 用。'),
   ctl:()=>{
@@ -809,7 +793,7 @@ const HINTS={
     return {where:atCtl,a:'controller 要設定 ds0-group 才會產生語音埠，信令要跟 FIT-50 一樣用 E&M wink-start。',b:'在 controller 底下用 ds0-group：channel 用 1、timeslots 用 1-24，type 打 ? 找 wink-start 那一個。',c};
   },
   pri:()=>ctl0().ds0?HINTS.tearCas():{where:atCtl,a:'CCS 用 ISDN PRI：controller 要設定 pri-group，第 24 個時槽會成為 D 通道（Serial0/1/0:23）。',b:'在 controller T1 0/1/0 底下用 pri-group timeslots，T1 全部 24 個時槽都要開。',c:['pri-group timeslots 1-24']},
-  compand:()=>S.cfg.voicePorts[PRI_PORT]?{where:atVp(PRI_PORT),a:'G.711 有 a-law 和 u-law 兩種編碼，要跟 FIT-50 一致，文件指定 u-law。',b:`到 voice-port ${PRI_PORT} 用 compand-type 設定。`,c:['compand-type u-law']}:needPri,
+  compand:()=>S.cfg.voicePorts[PRI_PORT]?{where:atVp(PRI_PORT),a:'G.711 有 a-law 和 u-law 兩種編碼，要跟 FIT-50 一致，FIT-50 用 u-law。',b:`到 voice-port ${PRI_PORT} 用 compand-type 設定。`,c:['compand-type u-law']}:needPri,
   dch:()=>{
     const s=S.cfg.serials[DCH]; if(!s) return needPri;
     const miss=[];
@@ -817,7 +801,7 @@ const HINTS={
     if(s.encap!=='ppp') miss.push('encapsulation ppp');
     if(s.sw!==FIT_SW) miss.push('isdn switch-type primary-net5');
     if(!s.incoming) miss.push('isdn incoming-voice voice');
-    return {where:atSer,a:'PRI 的信令走 D 通道，也就是 interface Serial0/1/0:23。路由器預設是 user（從）端，FIT-50 是 network 端。',b:`到 interface Serial0/1/0:23，照文件步驟 5 設定 ip address、encapsulation、isdn switch-type、isdn incoming-voice。還有 ${miss.length} 項沒設好。`,c:miss};
+    return {where:atSer,a:'PRI 的信令走 D 通道，也就是 interface Serial0/1/0:23。路由器預設是 user（從）端，FIT-50 是 network 端。',b:`到 interface Serial0/1/0:23，設定 ip address、encapsulation、isdn switch-type、isdn incoming-voice。還有 ${miss.length} 項沒設好。`,c:miss};
   },
   lo:()=>{
     const l=S.cfg.loopbacks['0'], now=l&&l.ip?`目前設成 ${l.ip.addr} ${l.ip.mask}，跟題目不同。`:'';
@@ -920,7 +904,7 @@ $('#btnB').addEventListener('click',()=>{
 function showPractice(){
   const ccs=MODE==='ccs';
   document.title=`CN 與 FIT-50 介接（${NAME[MODE]}）練習器`;
-  $('#lead').textContent=`CN 與 FIT-50 介接（${ccs?'T1 CCS，ISDN PRI，照文件 02':'T1 CAS，E&M wink-start，照文件 01'}）。照右側題目卡的數值設定路由器和 SIGMA。Tab 補齊、? 查選項。`;
+  $('#lead').textContent=`CN 與 FIT-50 介接（${ccs?'T1 CCS，ISDN PRI':'T1 CAS，E&M wink-start'}）。照右側題目卡的數值設定路由器和 SIGMA。Tab 補齊、? 查選項。`;
   $('#selMode').value=MODE;
   $('#selStart').innerHTML=`<option value="factory">出廠預設，從頭設定</option><option value="swap">已設定好 ${NAME[other(MODE)]}，改成 ${NAME[MODE]}</option>`;
   $('#selStart').value=START;
@@ -938,14 +922,13 @@ function showPractice(){
   ]);
 }
 function welcome(){
-  print(`LAB-RTR-B 模擬器：CN 與 FIT-50 介接（${NAME[MODE]}）`,'dim');
+  print(`LAB-RTR-B：CN 與 FIT-50 介接（${NAME[MODE]}）`,'dim');
   print('Tab 補齊指令或列出選項，? 查看可用參數，↑↓ 叫出歷史指令，Ctrl+Z 回到特權模式。','dim');
   print('卡住時按下方的「提示」或輸入 hint，每多按一次會說得更具體。','hint');
   if(START==='factory') print('controller T1 0/1/0 目前是出廠預設值，dial-peer 也還沒建立。先輸入 enable 開始。\n','dim');
-  else if(MODE==='ccs') print('這台路由器目前是照文件 01 設定好的 CAS（ds0-group、E&M wink-start）。FIT-50 已經改成 ISDN PRI，請照文件 02 把路由器改成 CCS。先輸入 enable，可以用 show running-config 看目前的設定。\n','dim');
-  else print('這台路由器目前是照文件 02 設定好的 CCS（pri-group、ISDN PRI）。FIT-50 已經改回 CAS（E&M wink-start），請把路由器改成 CAS。先輸入 enable，可以用 show running-config 看目前的設定。\n','dim');
+  else if(MODE==='ccs') print('這台路由器目前已經設定好 CAS（ds0-group、E&M wink-start）。FIT-50 已經改成 ISDN PRI，請把路由器改成 CCS。先輸入 enable，可以用 show running-config 看目前的設定。\n','dim');
+  else print('這台路由器目前已經設定好 CCS（pri-group、ISDN PRI）。FIT-50 已經改回 CAS（E&M wink-start），請把路由器改成 CAS。先輸入 enable，可以用 show running-config 看目前的設定。\n','dim');
 }
-/* 重新開始：出新題目、照目前的練習與起始狀態建立路由器 */
 function restart(){
   rollQuiz(); fresh(); buildTasks(); T.clear(); $('#raMsg').textContent='';
   showPractice(); renderSigma(); welcome(); refresh();
