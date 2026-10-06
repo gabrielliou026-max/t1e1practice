@@ -93,6 +93,13 @@ ol.tasks li.done .box::before{content:"✓";font-size:13px}
 ol.tasks li.done .tt{color:var(--muted)}
 ol.tasks li.now .box{border-color:var(--amber);color:var(--amber);border-width:2px}
 ol.tasks li.now .tt{font-weight:700}
+.quiz{border:1px solid var(--line);border-left:4px solid var(--amber);border-radius:6px;padding:10px 12px;margin-bottom:14px;background:var(--bg)}
+.quiz:empty{display:none}
+.quiz h2{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 10px;font-size:.95rem;margin:0 0 6px}
+.quiz h2 small{font-weight:400;font-size:.78rem;color:var(--muted)}
+.quiz dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0;font-size:.86rem}
+.quiz dt{color:var(--muted)}
+.quiz dd{margin:0;font-family:var(--mono);overflow-wrap:anywhere}
 ol.tasks details{grid-column:2;font-size:.85rem;color:var(--muted)}
 ol.tasks summary{cursor:pointer;width:max-content}
 ol.tasks code,.pane code{font-family:var(--mono);font-size:.82rem;background:rgba(127,140,120,.16);padding:1px 4px;border-radius:3px}
@@ -165,6 +172,7 @@ input.t{font-family:var(--mono)}
       </div>
 
       <div class="pane" id="tab-tasks">
+        <section class="quiz" id="quiz" aria-label="題目"></section>
         <div class="progress"><div class="meter"><i id="meter"></i></div><span id="prog">0/10</span></div>
         <ol class="tasks" id="tasks"></ol>
       </div>
@@ -177,7 +185,7 @@ input.t{font-family:var(--mono)}
 
         <h3>內線打出去</h3>
         <div class="row">
-          <div><label class="f" for="outExt">發話內線</label><input class="t" id="outExt" value="654321"></div>
+          <div><label class="f" for="outExt">發話內線</label><input class="t" id="outExt"></div>
           <div><label class="f" for="outNum">撥打號碼</label><input class="t" id="outNum" value="0912345678"></div>
         </div>
         <div class="chips">
@@ -215,7 +223,7 @@ input.t{font-family:var(--mono)}
         <h3>DID 號碼對照</h3>
         <ul class="did" id="didList"></ul>
         <label class="f" for="cExt">XRI-400 上存在的內線</label>
-        <input class="t" id="cExt" value="654321, 654322, 654323, 654324, 654325, 360500">
+        <input class="t" id="cExt">
 
         <div class="row">
           <button class="btn" id="btnRandom">隨機出題</button>
@@ -233,8 +241,7 @@ input.t{font-family:var(--mono)}
 'use strict';
 const {$,clone,ts,K,NUM,WORD,LINE,isIp,isDial,sortK,forward,fwdDesc}=CliCore;
 
-const DIDS=['6612001','6612002','6612003','6612004','6612005'];
-const TARGETS=['654321','654322','654323','654324','654325'];
+let DIDS, TARGETS;   // 題目：五個 DID 與對應內線，newQuiz() 產生
 const XRI_IP='10.10.6.124';
 const SW=['primary-4ess','primary-5ess','primary-dms100','primary-net5','primary-ni','primary-ntt','primary-qsig'];
 const SWH={'primary-4ess':'Lucent 4ESS switch type for the U.S.','primary-5ess':'Lucent 5ESS switch type for the U.S.','primary-dms100':'Northern Telecom DMS-100 switch type for the U.S.','primary-net5':'NET5 switch type for UK, Europe, Asia and Australia','primary-ni':'National ISDN Switch type for the U.S.','primary-ntt':'NTT switch type for Japan','primary-qsig':'QSIG switch type'};
@@ -774,11 +781,11 @@ const TASKS=[
   {id:'l2',t:'ISDN Layer 2 建立',h:()=>'<code>show isdn status</code> 要看到 MULTIPLE_FRAME_ESTABLISHED。D 通道需要 pri-group，Serial 介面不能 shutdown。'},
   {id:'sw',t:'D 通道的 switch-type 和電信端一致',h:()=>'<code>interface Serial'+dchan()+'</code> 底下 <code>isdn switch-type primary-net5</code>。介面設定會覆蓋全域設定。'},
   {id:'in',t:'Serial 介面把來電當成語音處理',h:()=>'<code>interface Serial'+dchan()+'</code> 底下 <code>isdn incoming-voice voice</code>。'},
-  {id:'did',t:'5 個 DID 號碼都響到對應的內線',h:()=>'<code>voice translation-rule 50</code> 加一對一規則，例如 <code>rule 2 /^6612001$/ /654321/</code>。中華電信送幾碼，用模擬來電加 <code>debug isdn q931</code> 看 Called Party Number。voice-port '+dchan()+' 也要套用 <code>translation-profile incoming PRI</code>。'},
+  {id:'did',t:'5 個 DID 號碼都響到對應的內線',h:()=>'<code>voice translation-rule 50</code> 加一對一規則，例如 <code>rule 2 /^'+DIDS[0]+'$/ /'+TARGETS[0]+'/</code>。中華電信送幾碼，用模擬來電加 <code>debug isdn q931</code> 看 Called Party Number。voice-port '+dchan()+' 也要套用 <code>translation-profile incoming PRI</code>。'},
   {id:'local',t:'內線能撥本區市話 07-7654321（只送 7 碼）',h:()=>'<code>dial-peer voice 7 pots</code>，<code>destination-pattern 07[2-9]......</code>、<code>port '+dchan()+'</code>、<code>forward-digits 7</code>。'},
   {id:'ld',t:'內線能撥外縣市市話 02-2345-6789（送完整號碼）',h:()=>'<code>dial-peer voice 8 pots</code>，<code>destination-pattern 0[2-8]T</code>、<code>port '+dchan()+'</code>、<code>forward-digits all</code>。'},
   {id:'dp518',t:'刪除沒有 port 的 dial-peer 518',h:()=>'<code>no dial-peer voice 518 pots</code>'},
-  {id:'test',t:'用 test voice translation-rule 驗證號碼',h:()=>'特權模式 <code>test voice translation-rule 50 6612001</code>，在設定模式要在前面加 <code>do</code>。'},
+  {id:'test',t:'用 test voice translation-rule 驗證號碼',h:()=>'特權模式 <code>test voice translation-rule 50 '+DIDS[0]+'</code>，在設定模式要在前面加 <code>do</code>。'},
   {id:'save',t:'存檔',h:()=>'<code>write memory</code> 或 <code>copy running-config startup-config</code>。'}
 ];
 /* 分三層的提示：a 方向、b 用哪個指令、c 完整指令。見 cli-core.js 的 createTerminal 說明 */
@@ -788,7 +795,7 @@ const atSer=()=>({mode:'if',enter:'interface Serial'+dchan(),at:c=>c&&c.name===d
 const atDp=(tag,type)=>({mode:'dp',enter:`dial-peer voice ${tag} ${type}`,at:c=>c&&c.tag===tag});
 const needPri=()=>({where:atCtl(),a:'show isdn status 看不到 D 通道，表示 controller 還沒有 pri-group。',b:'到 controller 底下設定 pri-group timeslots，D 通道（Serial 介面）會自動產生。',c:[`pri-group timeslots ${S.hw==='e1'?'1-31':'1-24'}`]});
 const HINTS={
-  conf:()=>({where:{mode:'config'},a:'要先進入設定模式，才能修改路由器的設定。',b:'enable 進入特權模式（提示字元變成 #），再用 configure terminal 進入設定模式。',c:['enable','configure terminal（可以縮寫成 conf t）']}),
+  conf:()=>({where:{mode:'config'},a:'要先進入設定模式，才能修改路由器的設定。',b:'enable 進入特權模式（提示字元變成 #），再用 configure terminal 進入設定模式。',c:['照上面的順序輸入。configure terminal 可以縮寫成 conf t，提示字元變成 (config)# 就完成了。']}),
   l1:()=>{
     if(C.line!==S.hw){
       if(S.cfg.cardType===C.line) return {where:{mode:'priv'},a:`介面卡類型已經改成 ${C.line.toUpperCase()}，但還沒生效。`,b:'card type 要存檔後 reload 才會生效。',c:['write memory','reload']};
@@ -820,17 +827,17 @@ const HINTS={
       b:`在 voice translation-rule 50 裡，每個 DID 加一條 rule。電信端送幾碼，可以開 debug isdn q931 再模擬撥入，看 Called Party Number。目前 07-${DIDS[i]} 失敗：${why}`,
       c:C.hidden?['電信端送幾碼目前隱藏，先用 debug isdn q931 確認。下面以送 7 碼為例：',...DIDS.map((d,k)=>`rule ${k+2} /^${d}$/ /${TARGETS[k]}/`)]:rules};
   },
-  local:()=>{ const r=simOut('654321','077654321'); return {where:atDp('7','pots'),a:'內線撥 07-7654321，路由器要有 dial-peer 把它從 PRI 送出去，而且只送 7 碼。到「模擬通話」撥一通看看。',b:`建立一個 POTS dial-peer，設定 destination-pattern、port、forward-digits。目前撥這個號碼的結果：${r.ok?'送出 '+r.sent:failOf(r)}`,c:['destination-pattern 07[2-9]......','port '+dchan(),'forward-digits 7']}; },
-  ld:()=>{ const r=simOut('654321','0223456789'); return {where:atDp('8','pots'),a:'內線撥 02-2345-6789，路由器要有 dial-peer 把它從 PRI 送出去，而且要送完整號碼。',b:`建立一個 POTS dial-peer，destination-pattern 要涵蓋外縣市區碼，forward-digits 要送全部。目前撥這個號碼的結果：${r.ok?'送出 '+r.sent:failOf(r)}`,c:['destination-pattern 0[2-8]T','port '+dchan(),'forward-digits all']}; },
+  local:()=>{ const r=simOut(TARGETS[0],'077654321'); return {where:atDp('7','pots'),a:'內線撥 07-7654321，路由器要有 dial-peer 把它從 PRI 送出去，而且只送 7 碼。到「模擬通話」撥一通看看。',b:`建立一個 POTS dial-peer，設定 destination-pattern、port、forward-digits。目前撥這個號碼的結果：${r.ok?'送出 '+r.sent:failOf(r)}`,c:['destination-pattern 07[2-9]......','port '+dchan(),'forward-digits 7']}; },
+  ld:()=>{ const r=simOut(TARGETS[0],'0223456789'); return {where:atDp('8','pots'),a:'內線撥 02-2345-6789，路由器要有 dial-peer 把它從 PRI 送出去，而且要送完整號碼。',b:`建立一個 POTS dial-peer，destination-pattern 要涵蓋外縣市區碼，forward-digits 要送全部。目前撥這個號碼的結果：${r.ok?'送出 '+r.sent:failOf(r)}`,c:['destination-pattern 0[2-8]T','port '+dchan(),'forward-digits all']}; },
   dp518:()=>({where:{mode:'config'},a:'dial-peer 518 沒有設定 port，是沒有用的設定。show dial-peer voice summary 可以看到它的 OPER 是 down。',b:'在設定模式，用 no 加上建立 dial-peer 的指令把它刪掉。',c:['no dial-peer voice 518 pots']}),
-  test:()=>({where:{mode:'priv'},a:'translation-rule 改好後，可以不打電話，直接測試號碼會被轉成什麼。',b:'用 test voice translation-rule，後面接規則編號和要測的號碼。在設定模式要在前面加 do。',c:['test voice translation-rule 50 6612001']}),
+  test:()=>({where:{mode:'priv'},a:'translation-rule 改好後，可以不打電話，直接測試號碼會被轉成什麼。',b:'用 test voice translation-rule，後面接規則編號和要測的號碼。在設定模式要在前面加 do。',c:['test voice translation-rule 50 '+DIDS[0]]}),
   save:()=>({where:{mode:'priv'},a:'設定還沒存檔，重開機就會不見。',b:'在特權模式把 running-config 存到 startup-config。',c:['write memory（或 copy running-config startup-config）']})
 };
 TASKS.forEach(t=>{ t.g=HINTS[t.id]; });
 
 function evalTasks(){
   const iz=isdnState(), L1=l1();
-  const loc=simOut('654321','077654321'), ld=simOut('654321','0223456789');
+  const loc=simOut(TARGETS[0],'077654321'), ld=simOut(TARGETS[0],'0223456789');
   return {
     conf:S.flags.conf,
     l1:L1.up&&!L1.warns.length,
@@ -860,8 +867,19 @@ function refresh(){
 }
 
 /* ---------- side panel ---------- */
-$('#inDid').innerHTML=DIDS.map((d,i)=>`<option value="${i}">07-${d}</option>`).join('');
-$('#didList').innerHTML=DIDS.map((d,i)=>`<li>07-${d} → 內線 ${TARGETS[i]}</li>`).join('');
+/* 出新題目：DID 是 7 碼（不以 806 開頭，避開既有的 rule 1），內線是 6 碼，各自連號 */
+function newQuiz(){
+  const {rnd,pad}=CliCore;
+  let pre; do{ pre=rnd(2,8)+pad(rnd(0,999),3); }while(pre.startsWith('806'));
+  const d0=rnd(1,95), ext=rnd(4,8)+pad(rnd(0,999),3), e0=rnd(10,90);
+  DIDS=[0,1,2,3,4].map(k=>pre+pad(d0+k,3));
+  TARGETS=[0,1,2,3,4].map(k=>ext+pad(e0+k,2));
+  $('#inDid').innerHTML=DIDS.map((d,i)=>`<option value="${i}">07-${d}</option>`).join('');
+  $('#didList').innerHTML=DIDS.map((d,i)=>`<li>07-${d} → 內線 ${TARGETS[i]}</li>`).join('');
+  $('#cExt').value=TARGETS.concat('360500').join(', ');
+  $('#outExt').value=TARGETS[0];
+  T.renderQuiz('在「電信端」分頁按「重設練習」會換一組',[['DID 轉內線',DIDS.map((d,i)=>`07-${d} → ${TARGETS[i]}`)]]);
+}
 const renderTrace=(title,r)=>T.renderTrace(title,r,k=>(k==='q'&&S.debug.q931)||(k==='t'&&S.debug.trans));
 $('#btnIn').addEventListener('click',()=>{ const i=+$('#inDid').value; renderTrace(`外線撥 07-${DIDS[i]}`,simIn(i)); });
 $('#btnOut').addEventListener('click',()=>{ const e=$('#outExt').value.trim(), n=$('#outNum').value.trim(); renderTrace(`內線 ${e} 撥 ${n}`,simOut(e,n)); });
@@ -882,7 +900,7 @@ $('#btnRandom').addEventListener('click',()=>{
   C.hidden=true; syncCarrierUI(); refresh();
 });
 $('#btnReveal').addEventListener('click',()=>{ C.hidden=false; syncCarrierUI(); refresh(); });
-$('#btnReset').addEventListener('click',()=>{ freshState(); freshCarrier(); syncCarrierUI(); T.clear(); welcome(); refresh(); T.focus(); });
+$('#btnReset').addEventListener('click',()=>{ freshState(); freshCarrier(); newQuiz(); syncCarrierUI(); T.clear(); welcome(); refresh(); T.focus(); });
 
 function welcome(){
   print('LAB-RTR-A 模擬器：中華電信 PRI 介接練習','dim');
@@ -890,7 +908,7 @@ function welcome(){
   print('卡住時按下方的「提示」或輸入 hint，每多按一次會說得更具體。','hint');
   print('先輸入 enable 開始。這是簡化的模擬，告警與 debug 輸出僅供練習參考。\n','dim');
 }
-welcome(); syncCarrierUI(); refresh();
+newQuiz(); welcome(); syncCarrierUI(); refresh();
 T.focus({preventScroll:true});
 })();
 </script>
