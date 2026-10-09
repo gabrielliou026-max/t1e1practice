@@ -110,6 +110,8 @@ ol.tasks li.now .tt{font-weight:700}
 ol.tasks details{grid-column:2;font-size:.85rem;color:var(--muted)}
 ol.tasks summary{cursor:pointer;width:max-content}
 ol.tasks code,.pane code{font-family:var(--mono);font-size:.82rem;background:rgba(127,140,120,.16);padding:1px 4px;border-radius:3px}
+.snd{display:flex;align-items:center;gap:6px;font-size:.88rem;color:var(--muted);margin:0 0 10px;cursor:pointer;width:max-content}
+.snd input{accent-color:var(--olive);width:16px;height:16px;margin:0}
 label.f{display:block;font-size:.88rem;color:var(--muted);margin:8px 0 3px}
 select,input.t{width:100%;font:inherit;font-size:.92rem;padding:7px 9px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink)}
 input.t{font-family:var(--mono)}
@@ -185,6 +187,7 @@ input.t{font-family:var(--mono)}
       </div>
 
       <div class="pane" id="tab-call" hidden>
+        <label class="snd"><input type="checkbox" id="sndToggle"> 撥號音效</label>
         <h2>外線打進來</h2>
         <label class="f" for="inDid">外面撥的號碼</label>
         <select id="inDid"></select>
@@ -886,9 +889,9 @@ function showQuiz(){
   $('#outExt').value=TARGETS[0];
   T.renderQuiz('在「電信端」分頁按「重設練習」會換一組',[['節點編號',NODE],['DID 轉內線',[{items:DIDS.map((d,i)=>`07-${d} → ${TARGETS[i]}`),block:true}]]]);
 }
-const renderTrace=(title,r)=>T.renderTrace(title,r,k=>(k==='q'&&S.debug.q931)||(k==='t'&&S.debug.trans));
-$('#btnIn').addEventListener('click',()=>{ const i=+$('#inDid').value; renderTrace(`外線撥 07-${DIDS[i]}`,simIn(i)); });
-$('#btnOut').addEventListener('click',()=>{ const e=$('#outExt').value.trim(), n=$('#outNum').value.trim(); renderTrace(`內線 ${e} 撥 ${n}`,simOut(e,n)); });
+const renderTrace=(title,r,dialed)=>T.renderTrace(title,r,k=>(k==='q'&&S.debug.q931)||(k==='t'&&S.debug.trans),dialed);
+$('#btnIn').addEventListener('click',()=>{ const i=+$('#inDid').value; renderTrace(`外線撥 07-${DIDS[i]}`,simIn(i),'07'+DIDS[i]); });
+$('#btnOut').addEventListener('click',()=>{ const e=$('#outExt').value.trim(), n=$('#outNum').value.trim(); renderTrace(`內線 ${e} 撥 ${n}`,simOut(e,n),n); });
 document.querySelectorAll('.chips button').forEach(b=>b.addEventListener('click',()=>{ $('#outNum').value=b.dataset.n; }));
 
 function syncCarrierUI(){

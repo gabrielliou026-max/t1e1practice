@@ -8,6 +8,37 @@ function ts(){
   return `*${M} ${String(d.getDate()).padStart(2,' ')} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(),3)}:`;
 }
 
+/* ---------- dial tones ---------- */
+const sound=(()=>{
+  const DT={'1':[697,1209],'2':[697,1336],'3':[697,1477],'4':[770,1209],'5':[770,1336],'6':[770,1477],'7':[852,1209],'8':[852,1336],'9':[852,1477],'*':[941,1209],'0':[941,1336],'#':[941,1477]};
+  let ctx=null, on=true, nodes=[];
+  try{ const v=localStorage.getItem('cli-sound'); if(v!==null) on=v==='1'; }catch(e){}
+  function ac(){
+    if(!ctx){ const A=window.AudioContext||window.webkitAudioContext; if(!A) return null; try{ ctx=new A(); }catch(e){ return null; } }
+    if(ctx.state==='suspended') ctx.resume();
+    return ctx;
+  }
+  function tone(freqs,at,dur,vol){
+    const g=ctx.createGain();
+    g.gain.setValueAtTime(0,at); g.gain.linearRampToValueAtTime(vol,at+0.01);
+    g.gain.setValueAtTime(vol,at+dur-0.01); g.gain.linearRampToValueAtTime(0,at+dur);
+    g.connect(ctx.destination);
+    freqs.forEach(f=>{ const o=ctx.createOscillator(); o.frequency.value=f; o.connect(g); o.start(at); o.stop(at+dur); nodes.push(o); });
+  }
+  function stop(){ nodes.forEach(o=>{ try{ o.stop(); }catch(e){} }); nodes=[]; }
+  function play(number,ok){
+    if(!on||!ac()) return;
+    stop();
+    let t=ctx.currentTime+0.05;
+    for(const ch of String(number).slice(0,20)){ if(DT[ch]) tone(DT[ch],t,0.09,0.12); t+=0.13; }
+    t+=0.5;
+    if(ok) for(let i=0;i<2;i++){ tone([440,480],t,1,0.1); t+=3; }
+    else for(let i=0;i<4;i++){ tone([480,620],t,0.5,0.1); t+=1; }
+  }
+  function set(v){ on=!!v; try{ localStorage.setItem('cli-sound',on?'1':'0'); }catch(e){} if(!on) stop(); }
+  return {play,stop,set,isOn:()=>on};
+})();
+
 /* ---------- grammar helpers ---------- */
 const K=(k,h,c,run,o)=>Object.assign({t:'k',k,h,c:c||[],run},o||{});
 const NUM=(min,max,h,c,run,o)=>Object.assign({t:'p',type:'num',min,max,label:`<${min}-${max}>`,h,c:c||[],run},o||{});
@@ -364,7 +395,8 @@ function createTerminal(o){
     q.appendChild(dl);
   }
   function setLed(id,s){ $('#'+id).className='led'+(s?' '+s:''); }
-  function renderTrace(title,r,show){
+  function renderTrace(title,r,show,dialed){
+    if(dialed!=null) sound.play(dialed,r.ok);
     const t=$('#trace'); t.innerHTML='';
     const p=document.createElement('p'); p.className='tt '+(r.ok?'good':'bad'); p.textContent=`${title}：${r.ok?'成功':'失敗'}`; t.appendChild(p);
     const ol=document.createElement('ol');
@@ -413,7 +445,9 @@ function createTerminal(o){
     L.push(lv<3?'（再按一次提示，看更具體的做法）':'（做完後再按提示，會換下一個任務）');
     print(L.filter(Boolean).map((l,i)=>i?'  '+l:l).join('\n'),'hint'); scrollDown();
   }
-  function clear(){ out.innerHTML=''; $('#trace').innerHTML=''; hs={id:null,level:0}; errStreak=0; }
+  function clear(){ out.innerHTML=''; $('#trace').innerHTML=''; hs={id:null,level:0}; errStreak=0; sound.stop(); }
+  const snd=$('#sndToggle');
+  if(snd){ snd.checked=sound.isOn(); snd.addEventListener('change',()=>sound.set(snd.checked)); }
   function focus(opts){ inp.focus(opts); }
 
   return {print,scrollDown,mark,promptStr,withCommon,enterConfig,toPriv,exitMode,logout,enterDP,doSave,save,copyRun,

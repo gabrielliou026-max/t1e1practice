@@ -110,6 +110,8 @@ ol.tasks li.now .tt{font-weight:700}
 ol.tasks details{grid-column:2;font-size:.85rem;color:var(--muted)}
 ol.tasks summary{cursor:pointer;width:max-content}
 ol.tasks code,.pane code{font-family:var(--mono);font-size:.82rem;background:rgba(127,140,120,.16);padding:1px 4px;border-radius:3px}
+.snd{display:flex;align-items:center;gap:6px;font-size:.88rem;color:var(--muted);margin:0 0 10px;cursor:pointer;width:max-content}
+.snd input{accent-color:var(--olive);width:16px;height:16px;margin:0}
 label.f{display:block;font-size:.88rem;color:var(--muted);margin:8px 0 3px}
 select,input.t{width:100%;font:inherit;font-size:.92rem;padding:7px 9px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink)}
 input.t{font-family:var(--mono)}
@@ -231,6 +233,7 @@ button.del{font:inherit;font-size:.8rem;padding:2px 8px;border:1px solid var(--l
       </div>
 
       <div class="pane" id="tab-call" hidden>
+        <label class="snd"><input type="checkbox" id="sndToggle"> 撥號音效</label>
         <h2>VoIP 打 FIT-50</h2>
         <div class="row">
           <div><label class="f" for="aExt">發話內線</label><input class="t" id="aExt"></div>
@@ -961,16 +964,16 @@ $('#raSave').addEventListener('click',()=>{
   if(SG.routes.some(r=>r.addr===a)){ $('#raMsg').textContent=`${a} 已經存在。`; return; }
   SG.routes.push({addr:a,name:n}); $('#raMsg').textContent=`已新增 ${a}。`; $('#raAddr').value=''; renderSigma(); refresh();
 });
-const renderTrace=(title,r)=>T.renderTrace(title,r,k=>(k==='v'&&S.debug.vpm)||(k==='d'&&S.debug.dp)||(k==='q'&&S.debug.q931));
+const renderTrace=(title,r,dialed)=>T.renderTrace(title,r,k=>(k==='v'&&S.debug.vpm)||(k==='d'&&S.debug.dp)||(k==='q'&&S.debug.q931),dialed);
 $('#btnA').addEventListener('click',()=>{
   const e=$('#aExt').value.trim(), n=$('#aNum').value.trim(), r=simA(e,n);
   if(r.ok&&n===Q.fitUser) S.flags.callA=true;
-  renderTrace(`內線 ${e} 撥 ${n}`,r); refresh();
+  renderTrace(`內線 ${e} 撥 ${n}`,r,n); refresh();
 });
 $('#btnB').addEventListener('click',()=>{
   const u=$('#bUser').value.trim(), n=$('#bNum').value.trim(), r=simB(u,n);
   if(r.ok&&n===Q.exts[0]) S.flags.callB=true;
-  renderTrace(`FIT-50 ${u} 撥 ${n}`,r); refresh();
+  renderTrace(`FIT-50 ${u} 撥 ${n}`,r,n); refresh();
 });
 
 /* ---------- 練習切換、題目卡與畫面文字 ---------- */
